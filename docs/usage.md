@@ -1,6 +1,6 @@
 # Kebloop usage guide
 
-For build and installation instructions, see the [README](../README.md#build-and-install).
+For build and installation instructions, see the [macOS guide](build-macos.md) or [Linux guide](build-linux.md).
 
 ## Using Kebloop
 
@@ -86,8 +86,6 @@ Search matches exact names, prefixes, word prefixes, and fuzzy subsequences, wit
 Release XCTest coverage checks matching/ranking, duplicate names, calculator grammar, invalid input, precision, emoji search, quicklink validation/persistence, clipboard limits/deduplication/privacy/persistence, file-query cancellation/caching/ranking, alias priority/persistence, clipboard removal, Carbon shortcut event routing, and AI provider persistence/clipboard handoff/target selection. A synthetic 1,000-app ranking benchmark averaged approximately 9 ms on the development Mac. This measures ranking, not full input-to-render latency or parity with Raycast.
 
 Native UI smoke checks covered app/calculator workflows, Settings search, creating and opening a quicklink, recording/copying clipboard entries, finding an indexed file, emoji search/copy, and the app shortcut recorder. App-scoped UI automation does not deliver system-wide Carbon hotkey events, so physical keyboard invocation of global shortcuts needs a manual check; native registration and Carbon event-routing tests pass. Multiple displays, full-screen Spaces, VoiceOver, login startup, and the under-100-ms open target still need broader device testing.
-
-See [PLAN.md](../PLAN.md) for scope and acceptance targets.
 
 ## Everyday utilities (milestone 3)
 

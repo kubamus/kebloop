@@ -2,12 +2,11 @@
 
 A native Linux port of Kebloop: one search field for apps, files, calculations, clipboard history, quicklinks, snippets, and emoji. Built with Rust, GTK4, libadwaita, and gtk4-layer-shell. It runs locally and needs no account.
 
-The behaviour mirrors the macOS app; see the [usage guide](../docs/usage.md) for commands, calculator syntax, and conversions.
+The behaviour mirrors the macOS app; see the [usage guide](../docs/usage.md) for commands, calculator syntax, and conversions. For prerequisites, installation, and development checks, see the [Linux build guide](../docs/build-linux.md).
 
-## Requirements
+## Runtime requirements
 
 - **Runtime:** GTK 4.14 or later, libadwaita 1.6 or later, and gtk4-layer-shell.
-- **Build:** Rust 1.92 or later, `pkg-config`, and the development headers of the libraries above.
 - **Optional:** `wtype` (wlroots compositors, niri) or `ydotool` for direct paste into the previous window; `wpctl` or `pactl` for Toggle Mute; `gsettings` (or the desktop appearance portal) for Toggle Appearance; `loginctl` (or logind over D-Bus) for Lock Screen, Sleep, Restart and Log Out.
 
 | Session | Launcher | Clipboard history |
@@ -17,30 +16,6 @@ The behaviour mirrors the macOS app; see the [usage guide](../docs/usage.md) for
 | X11 | Regular fallback window | Yes, through XFixes and X11 selections |
 
 On every session, `kebloop toggle` works from any compositor keybinding. Where the GlobalShortcuts portal exists (KDE, GNOME 48+, Hyprland), Kebloop also registers its shortcuts there.
-
-## Build and install
-
-```sh
-git clone https://github.com/kubamus/kebloop.git
-cd kebloop
-git checkout linux-rust
-linux/scripts/install.sh
-```
-
-The script builds a release binary and installs it, the desktop entry, the AppStream metadata, and the icon under `~/.local`. Make sure `~/.local/bin` is in your `PATH`. Options:
-
-```sh
-linux/scripts/install.sh --prefix /usr/local   # run with doas/sudo yourself
-DESTDIR=/tmp/stage linux/scripts/install.sh --prefix /usr
-linux/scripts/install.sh --uninstall
-```
-
-On Arch Linux, build a package from the repository instead:
-
-```sh
-cd linux/packaging/arch
-makepkg -si
-```
 
 ## Bind the launcher shortcut
 
@@ -135,34 +110,6 @@ Usage counters and the clipboard history are written in the background shortly a
 ## Privacy
 
 Same as the macOS app. Core features run locally. The one exception is currency conversion: when a query names a currency pair (for example `100 USD to EUR`) and no rate for it was downloaded in the last 24 hours, Kebloop requests that pair from [Frankfurter](https://frankfurter.dev/) (`https://api.frankfurter.dev/v2/rate/usd/eur`). Only the two currency codes are sent, never the rest of your query; rates are cached for offline use for up to 30 days. AI handoff sends only your query to the provider you choose, in your browser; no API key is required. Sensitive clipboard types are not recorded, and clipboard files are stored with owner-only permissions.
-
-## Development
-
-```sh
-cd linux
-cargo build
-cargo fmt --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-```
-
-The workspace has four crates: `kebloop-core` (engines), `kebloop-services` (stores and catalogs), `kebloop-platform` (Linux integration), and `kebloop` (GTK UI and CLI). See [ARCHITECTURE.md](ARCHITECTURE.md) for details and the macOS-to-Linux mapping. Localization catalogs are shared with the macOS app from `Sources/Kebloop/Resources`.
-
-Environment variables for testing:
-
-- `KEBLOOP_APP_ID`: use another application id so a test instance does not collide with your running one.
-- `KEBLOOP_DISABLE_SERVICES`: comma-separated list of `tray`, `shortcuts`, `clipboard` to leave unstarted.
-
-## Validation
-
-Run the full Rust checks above locally; this repository does not configure CI. Live desktop tests are opt-in and use isolated sessions:
-
-- [GNOME Shell smoke tests](integrations/gnome-shell/README.md) cover clipboard, native paste and window controls.
-- [KWin tests](integrations/kwin/README.md) cover native controls and monitors.
-- X11 clipboard, XTEST and EWMH live tests require a private Xvfb display (`cargo test -p kebloop-platform private_x11 -- --ignored --test-threads=1` and `compositor::x11::tests::live_controls`).
-- `tests/gtk_snippets.py target/release/kebloop` verifies real GTK snippet expansion and clipboard rendering under private Xvfb/D-Bus with openbox, python3-gi, xdotool and xclip.
-
-Verified on Ubuntu 26.04 ARM64, GNOME Shell 50.1, KWin 6.6.6, and Xvfb/Openbox. Other desktop versions and physical monitor/hardware configurations require their own testing.
 
 ## Third-party data
 

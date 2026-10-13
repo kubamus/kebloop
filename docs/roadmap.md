@@ -4,7 +4,7 @@ Status: milestones 1–4 implemented; native acceptance verification pending as 
 
 This roadmap turns the feature proposals into implementation chunks. Each chunk should be delivered and verified independently. Check a chunk only when its acceptance criteria are met, and record any follow-up work here.
 
-The original [MVP plan](../PLAN.md) remains a historical design reference. This document describes the next stages of the existing Swift, AppKit, and SwiftUI app.
+This document tracks remaining native acceptance work, distribution and updates, and the longer-term feature backlog for Kebloop.
 
 ## Goals and implementation rules
 
