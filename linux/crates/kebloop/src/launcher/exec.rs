@@ -451,18 +451,7 @@ impl Launcher {
                 super::views::utilities::UtilityKind::NextMeeting,
             )),
             LauncherCommand::Notes | LauncherCommand::NewNote => {
-                self.hide();
-                let launcher = self.clone();
-                if let Err(error) = super::views::notes::open_notes(
-                    &ctx.app,
-                    &ctx,
-                    None,
-                    command == LauncherCommand::NewNote,
-                    move || launcher.show(),
-                ) {
-                    self.show();
-                    self.fail(error.to_string());
-                }
+                self.show_notes(command == LauncherCommand::NewNote, None);
             }
             LauncherCommand::Snippets => self.set_mode(Mode::Snippets),
             LauncherCommand::Scripts => self.set_mode(Mode::Scripts),
@@ -505,6 +494,9 @@ impl Launcher {
     /// Run a command by id (CLI `command`, global shortcuts, help window). Built-ins open the
     /// launcher in the right mode; user commands run directly.
     pub fn execute_command(&self, id: &str) {
+        if !self.save_notes() {
+            return;
+        }
         let Some(ctx) = self.ctx() else { return };
         if !ctx.with_settings(|s| s.personalization.commands_enabled) {
             return;

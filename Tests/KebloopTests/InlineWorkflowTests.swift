@@ -17,15 +17,14 @@ final class InlineWorkflowTests: XCTestCase {
     func testNotesBrowseAndDirectQueryOpenExistingNoteWithoutCreatingAnother() async throws {
         try await withLauncher { launcher, notes in
             let note = try XCTUnwrap(notes.create(contents: "# Keyboard plan\n\nUseful notes"))
-            var opened: String?
-            launcher.onNote = { opened = $0 }
             launcher.show()
             launcher.setQuery("notes Keyboard plan")
             launcher.performSelected()
             XCTAssertEqual(launcher.currentModeID, "notes")
             XCTAssertEqual(launcher.resultIdentifiers.first, "note:" + note.id)
             launcher.performSelected()
-            XCTAssertEqual(opened, note.id)
+            XCTAssertEqual(launcher.currentEditingNoteID, note.id)
+            XCTAssertTrue(launcher.isVisible)
             XCTAssertEqual(notes.notes.count, 1)
         }
     }

@@ -686,3 +686,11 @@
 "Save and preview (⌘E)" = "Zapisz i pokaż podgląd (⌘E)";
 "⇧⌘R Restore · ⇧⌘D Discard" = "⇧⌘R Restore · ⇧⌘D Discard";
 "⌘↩ Save · ⌘F Find · Esc Preview" = "⌘↩ Zapisz · ⌘F Szukaj · Esc Podgląd";
+
+"Edit Note" = "Edytuj notatkę";
+"Copy Markdown" = "Kopiuj Markdown";
+"Export Markdown…" = "Eksportuj Markdown…";
+"Delete Note…" = "Usuń notatkę…";
+"Create a new Markdown note" = "Utwórz nową notatkę Markdown";
+"Show note actions (⌘K)" = "Pokaż czynności notatki (⌘K)";
+"Delete Note   ⌘⌫" = "Usuń notatkę   ⌘⌫";

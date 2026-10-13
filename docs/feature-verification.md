@@ -91,9 +91,11 @@ The release suite executes **242 tests**: **240 pass**, two opt-in timing tests 
 
 ## Linux workflow parity — 2026-10-13
 
-The Rust port now exposes the workflow commands through launcher search, CLI/compositor bindings, and relevant tray entries. Notes use a reusable floating preview/editor with keyboard creation, find, browse, undo/redo, recovery, export, and guarded close. Dictionary and dictation are inline launcher pages. Calendar selection uses local iCalendar files; menu/selection actions use AT-SPI, and window search/layouts use existing compositor backends. Raycast migration and the reviewed Script Command/no-view SDK subset are implemented in Rust. See [Linux usage and exact support](../linux/README.md#workflow-commands).
+The Rust port now exposes the workflow commands through launcher search, CLI/compositor bindings, and relevant tray entries. Notes stay in the floating Kebloop launcher: the note list sits beside the selected rendered preview, and navigating or scrolling the list updates that preview. Creating a note opens a Markdown editor with a live preview. Ctrl+K opens per-note Edit, Copy Markdown, Export, and Delete actions; Ctrl+Backspace immediately deletes the selected note while browsing or previewing, with no confirmation, while Backspace in the editor continues to edit text. Dictionary and dictation are inline launcher pages. Calendar selection uses local iCalendar files; menu/selection actions use AT-SPI, and window search/layouts use existing compositor backends. Raycast migration and the reviewed Script Command/no-view SDK subset are implemented in Rust. See [Linux usage and exact support](../linux/README.md#workflow-commands).
 
-Validation on the existing Ubuntu ARM64 Linux VM:
+The inline notes changes were validated on the Ubuntu ARM64 VM with a development build: **115 launcher tests** and **5 notes-storage tests** pass, as do strict launcher clippy checks and formatting. The updated `tests/gtk_workflows.py` passes in private Xvfb/D-Bus/Openbox with AT-SPI. It checks the single launcher window, live preview while typing, note selection and actual wheel scrolling, per-note actions, immediate menu/shortcut deletion, no-match filters, creating from a filtered list, stable action targets after edits, Ctrl+Enter saving, native text deletion, and refused quit when saving fails. Dictionary and dictation remain inline without starting recording.
+
+Earlier validation on the existing Ubuntu ARM64 Linux VM:
 
 - `cargo test --workspace --locked`: **570 pass**, **20 opt-in desktop tests ignored**, zero failures.
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`, workspace formatting, and `cargo build --release --locked` pass.

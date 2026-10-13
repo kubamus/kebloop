@@ -340,12 +340,14 @@
 "Could not start the background operation." = "Nie udało się uruchomić operacji w tle.";
 "Create a note with Ctrl+N." = "Utwórz notatkę za pomocą Ctrl+N.";
 "Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+P notes" = "Ctrl+Enter: zapisz · Ctrl+F: szukaj · Esc: podgląd · Ctrl+N: nowa · Ctrl+P: notatki";
+"Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+Shift+N notes" = "Ctrl+Enter: zapisz · Ctrl+F: szukaj · Esc: podgląd · Ctrl+N: nowa · Ctrl+Shift+N: notatki";
 "Delete Note…   Ctrl+Delete" = "Usuń notatkę…   Ctrl+Delete";
 "Discard   Ctrl+Shift+D" = "Odrzuć   Ctrl+Shift+D";
 "Draft saved for recovery." = "Zapisano szkic do odzyskania.";
 "Enabled. Review the source and preferences before running." = "Włączono. Przed uruchomieniem sprawdź źródło i preferencje.";
 "Enter a word above and press Return. Definitions use local StarDict dictionaries (sdcv)." = "Wpisz słowo powyżej i naciśnij Enter. Definicje pochodzą z lokalnych słowników StarDict (sdcv).";
 "Enter edit · Ctrl+N new · Ctrl+P notes · Ctrl+F find · Esc close" = "Enter: edytuj · Ctrl+N: nowa · Ctrl+P: notatki · Ctrl+F: szukaj · Esc: zamknij";
+"Enter edit · Ctrl+N new · Ctrl+Shift+N notes · Ctrl+K options · Ctrl+Backspace delete · Esc close" = "Enter: edytuj · Ctrl+N: nowa · Ctrl+Shift+N: notatki · Ctrl+K: opcje · Ctrl+Backspace: usuń · Esc: zamknij";
 "Enter restores a layout. Tab to name and save the current layout." = "Enter przywraca układ. Tab przechodzi do nazwy i zapisania bieżącego układu.";
 "Enter: next match · Esc: close find" = "Enter: następne dopasowanie · Esc: zamknij wyszukiwanie";
 "Export Markdown…   Ctrl+Shift+E" = "Eksportuj Markdown…   Ctrl+Shift+E";
@@ -362,11 +364,13 @@
 "Loading…" = "Wczytywanie…";
 "Lowercase" = "Zmień na małe litery";
 "Markdown note exported." = "Wyeksportowano notatkę Markdown.";
+"Markdown copied to clipboard." = "Skopiowano Markdown do schowka.";
 "Model selected. Ctrl+Return starts recording." = "Wybrano model. Ctrl+Return rozpoczyna nagrywanie.";
 "No Raycast JavaScript commands have been imported." = "Nie zaimportowano jeszcze żadnych poleceń JavaScript Raycast.";
 "No matches found." = "Nie znaleziono dopasowań.";
 "No previous application is available." = "Poprzednia aplikacja jest niedostępna.";
 "No upcoming meeting link" = "Brak łącza do nadchodzącego spotkania";
+"Options" = "Opcje";
 "Preference saved." = "Zapisano preferencję.";
 "Preview JavaScript Command" = "Podgląd polecenia JavaScript";
 "Preview supported Raycast exports and review commands before importing. All imported commands start disabled." = "Wyświetl podgląd obsługiwanych eksportów Raycasta i sprawdź polecenia przed importem. Wszystkie zaimportowane polecenia są początkowo wyłączone.";
@@ -406,6 +410,7 @@
 "Transform" = "Przekształć";
 "Trim Whitespace" = "Usuń białe znaki z początku i końca";
 "Type to filter · Up/Down select · Enter open · Esc return" = "Wpisz, aby filtrować · Góra/Dół: wybór · Enter: otwórz · Esc: wróć";
+"Type to filter · Up/Down select · Enter edit · Ctrl+K note options · Esc preview" = "Wpisz, aby filtrować · Góra/Dół: wybór · Enter: edytuj · Ctrl+K: opcje notatki · Esc: podgląd";
 "Upcoming events · Return joins the next available meeting" = "Nadchodzące wydarzenia · Enter dołącza do najbliższego dostępnego spotkania";
 "Uppercase" = "Zmień na wielkie litery";
 "Window integration is unavailable on this desktop." = "Integracja z oknami jest niedostępna w tym środowisku graficznym.";

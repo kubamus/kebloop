@@ -50,8 +50,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var raycastSDK = RaycastSDKStore()
     private lazy var calendarMeetings = CalendarMeetingService()
     private lazy var markdownNotes = MarkdownNoteStore()
-    private var notesPanel: NSPanel?
-    private var notesHasUnsavedDraft = false
     private let aliases = AppAliasStore()
     private let ai = AIHandoffService()
     private let personalization = PersonalizationStore()
@@ -99,7 +97,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         configureMenus()
         launcher = LauncherPanelController(index: index, quicklinks: quicklinks, clipboard: clipboard, aliases: aliases, ai: ai, personalization: personalization, appleShortcuts: appleShortcuts, snippets: snippets, scripts: scripts, extensions: extensions)
         launcher.noteStore = { [weak self] in self?.markdownNotes ?? MarkdownNoteStore() }
-        launcher.onNote = { [weak self] id in self?.showNotes(noteID: id) }
         launcher.profileName = { [weak self] in self?.configuration.activeProfileName ?? "Personal" }
         launcher.onScript = { [weak self] command, arguments in self?.runScript(command, arguments: arguments) }
         launcher.onExtension = { [weak self] in self?.showExtension($0) }
@@ -165,14 +162,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         bar.addItem(editItem)
         NSApp.mainMenu = bar
     }
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if sender === notesPanel, notesHasUnsavedDraft { return false }
-        return true
-    }
-
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if notesHasUnsavedDraft {
-            notesPanel?.makeKeyAndOrderFront(nil)
+        if !launcher.saveNotes() {
             return .terminateCancel
         }
         return .terminateNow
@@ -180,7 +171,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow {
-            if window === notesPanel { markdownNotes.flushAll() }
             workflowCleanup.removeValue(forKey: ObjectIdentifier(window))?()
             automationWindows.removeAll { $0 === window }
         }
@@ -270,10 +260,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let target = launcher.previousApplication
             let service = SelectedTextActionsService()
             automationWindow(title: command.title, view: SelectedTextActionsView(application: target, service: service), onClose: { service.cancelTransform() })
-        case .newNote:
-            guard !notesHasUnsavedDraft else { notesPanel?.makeKeyAndOrderFront(nil); return }
-            if let note = markdownNotes.create(contents: "") { showNotes(noteID: note.id, editing: true) }
-            else { showNotes() }
+        case .newNote: launcher.createNote()
         case .notes, .dictionary, .dictation: launcher.executeCommand(id: command.id)
         case .raycastImport:
             automationWindow(title: command.title, view: RaycastMigrationView(snippets: snippets, quicklinks: quicklinks))
@@ -293,34 +280,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         default: launcher.executeCommand(id: command.rawValue)
         }
     }
-    private func showNotes(noteID: String? = nil, editing: Bool = false) {
-        guard !notesHasUnsavedDraft else { notesPanel?.makeKeyAndOrderFront(nil); return }
-        launcher.dismiss(restoreFocus: false)
-        if notesPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
-                                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.contentMinSize = NSSize(width: 480, height: 320)
-            panel.title = LauncherCommand.notes.title
-            panel.isReleasedWhenClosed = false
-            panel.level = .floating
-            panel.hidesOnDeactivate = false
-            panel.delegate = self
-            panel.center()
-            notesPanel = panel
-        }
-        markdownNotes.flushAll()
-        notesPanel?.contentView = NSHostingView(rootView: MarkdownNotesView(store: markdownNotes,
-            initialNoteID: noteID, initiallyEditing: editing, onClose: { [weak self] in
-                self?.notesPanel?.close(); self?.launcher.restorePreviousFocus()
-            }, onUnsavedDraftChanged: { [weak self] pending in self?.notesHasUnsavedDraft = pending },
-            onBrowse: { [weak self] in
-                self?.notesPanel?.close()
-                self?.launcher.executeCommand(id: LauncherCommand.notes.id)
-            }))
-        notesPanel?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
     private func showHelp(onboarding: Bool) {
         launcher.dismiss(restoreFocus: false)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 520), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -364,7 +323,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         settings?.appearance = appearance
         helpWindow?.appearance = appearance
-        notesPanel?.appearance = appearance
         for window in automationWindows { window.appearance = appearance }
     }
     @objc func showSettings() {

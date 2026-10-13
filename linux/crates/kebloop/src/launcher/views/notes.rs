@@ -1,18 +1,17 @@
-//! Keyboard-first Markdown notes with a rendered preview and an optional note browser.
+//! Keyboard-first Markdown notes with an inline browser and live rendered preview.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use adw::prelude::*;
+use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use kebloop_services::error::ConfigError;
 use kebloop_services::notes::{MarkdownNote, MarkdownNotesStore};
 
-use crate::context::AppContext;
 use crate::i18n::tr;
 
 type PlainCallback = Rc<dyn Fn()>;
+type ModalCallback = Rc<dyn Fn(bool)>;
 
 thread_local! {
     static ACTIVE_NOTES: RefCell<Weak<Inner>> = const { RefCell::new(Weak::new()) };
@@ -48,11 +47,13 @@ struct Inner {
     title: gtk::Label,
     editor_scroll: gtk::ScrolledWindow,
     editor: gtk::TextView,
+    editor_separator: gtk::Separator,
     preview_scroll: gtk::ScrolledWindow,
     preview: gtk::TextView,
     browse: gtk::Box,
     browse_search: gtk::Entry,
     browse_list: gtk::ListBox,
+    browse_scroll: gtk::ScrolledWindow,
     browse_ids: RefCell<Vec<String>>,
     find_bar: gtk::Box,
     find_entry: gtk::Entry,
@@ -67,9 +68,11 @@ struct Inner {
     editing: Cell<bool>,
     browsing: Cell<bool>,
     suppress_editor_change: Cell<bool>,
+    suppress_browser_selection: Cell<bool>,
     recovery_generation: Cell<u64>,
     on_close: RefCell<Option<PlainCallback>>,
     on_browse: RefCell<Option<PlainCallback>>,
+    modal_changed: RefCell<Option<ModalCallback>>,
 }
 
 impl NotesPage {
@@ -88,7 +91,7 @@ impl NotesPage {
         let new_note_button = gtk::Button::with_label(&tr("New Note"));
         new_note_button.set_action_name(Some("notes.new"));
         let more = gtk::MenuButton::builder()
-            .label(tr("More"))
+            .label(tr("Options"))
             .css_classes(["flat"])
             .build();
         more.set_widget_name("notes-more-control");
@@ -98,10 +101,16 @@ impl NotesPage {
         menu_box.set_margin_bottom(6);
         menu_box.set_margin_start(6);
         menu_box.set_margin_end(6);
-        let export = gtk::Button::with_label(&tr("Export Markdown…   Ctrl+Shift+E"));
+        let edit_option = gtk::Button::with_label(&tr("Edit"));
+        edit_option.set_action_name(Some("notes.toggle-edit"));
+        let copy = gtk::Button::with_label(&tr("Copy Markdown"));
+        copy.set_action_name(Some("notes.copy"));
+        let export = gtk::Button::with_label(&tr("Export"));
         export.set_action_name(Some("notes.export"));
-        let delete = gtk::Button::with_label(&tr("Delete Note…   Ctrl+Delete"));
+        let delete = gtk::Button::with_label(&tr("Delete"));
         delete.set_action_name(Some("notes.delete"));
+        menu_box.append(&edit_option);
+        menu_box.append(&copy);
         menu_box.append(&export);
         menu_box.append(&delete);
         menu.set_child(Some(&menu_box));
@@ -157,14 +166,14 @@ impl NotesPage {
         browse_list.add_css_class("boxed-list");
         let browse_scroll = gtk::ScrolledWindow::builder()
             .child(&browse_list)
+            .width_request(220)
             .vexpand(true)
             .hexpand(true)
             .build();
         let browse = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        browse.add_css_class("kb-page");
         browse.append(&browse_search);
         browse.append(&browse_scroll);
-        browse.set_visible(false);
+        browse.set_size_request(220, -1);
 
         let recovery_label = gtk::Label::builder()
             .label(tr("A recovered draft is available."))
@@ -219,13 +228,27 @@ impl NotesPage {
         bottom.append(&status);
         bottom.append(&footer);
 
+        let editor_separator = gtk::Separator::new(gtk::Orientation::Vertical);
+        let details = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        details.set_hexpand(true);
+        details.set_vexpand(true);
+        details.append(&editor_scroll);
+        details.append(&editor_separator);
+        details.append(&preview_scroll);
+
+        let workspace = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        workspace.set_hexpand(true);
+        workspace.set_vexpand(true);
+        workspace.set_height_request(330);
+        workspace.append(&browse);
+        workspace.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+        workspace.append(&details);
+
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.add_css_class("kb-page");
         root.append(&header);
         root.append(&recovery_actions);
-        root.append(&editor_scroll);
-        root.append(&preview_scroll);
-        root.append(&browse);
+        root.append(&workspace);
         root.append(&bottom);
 
         let inner = Rc::new(Inner {
@@ -233,11 +256,13 @@ impl NotesPage {
             title,
             editor_scroll,
             editor,
+            editor_separator,
             preview_scroll,
             preview,
             browse,
             browse_search,
             browse_list,
+            browse_scroll,
             browse_ids: RefCell::new(Vec::new()),
             find_bar,
             find_entry,
@@ -252,23 +277,20 @@ impl NotesPage {
             editing: Cell::new(false),
             browsing: Cell::new(false),
             suppress_editor_change: Cell::new(false),
+            suppress_browser_selection: Cell::new(false),
             recovery_generation: Cell::new(0),
             on_close: RefCell::new(None),
             on_browse: RefCell::new(None),
+            modal_changed: RefCell::new(None),
         });
-        connect_actions(
-            &inner,
-            [
-                &edit,
-                &new_note_button,
-                &browse_button,
-                &to_launcher,
-                &restore_button,
-                &discard_button,
-                &export,
-                &delete,
-            ],
-        );
+        edit.set_widget_name("notes-edit-control");
+        new_note_button.set_widget_name("notes-new-control");
+        browse_button.set_widget_name("notes-browse-control");
+        to_launcher.set_widget_name("notes-launcher-control");
+        copy.set_widget_name("notes-copy-control");
+        export.set_widget_name("notes-export-control");
+        delete.set_widget_name("notes-delete-control");
+        connect_actions(&inner);
         connect_editor(&inner);
         connect_browser(&inner);
         connect_find(&inner);
@@ -285,6 +307,26 @@ impl NotesPage {
     pub fn connect(&self, on_close: impl Fn() + 'static, on_browse: impl Fn() + 'static) {
         *self.inner.on_close.borrow_mut() = Some(Rc::new(on_close));
         *self.inner.on_browse.borrow_mut() = Some(Rc::new(on_browse));
+    }
+
+    /// Bind the page to its containing window for dialogs and failed-save recovery.
+    pub fn bind_window(&self, window: &gtk::Window) {
+        *self.inner.window.borrow_mut() = Some(window.downgrade());
+    }
+
+    /// Register this page as the active note editor for the application quit save gate.
+    pub fn register_as_active(&self) {
+        ACTIVE_NOTES.with(|active| *active.borrow_mut() = Rc::downgrade(&self.inner));
+    }
+
+    /// Notify the launcher when a modal note dialog opens or closes.
+    pub fn connect_modal_changed(&self, callback: impl Fn(bool) + 'static) {
+        *self.inner.modal_changed.borrow_mut() = Some(Rc::new(callback));
+    }
+
+    /// Whether the note action menu is open.
+    pub fn is_actions_open(&self) -> bool {
+        self.inner.more_popover.is_visible()
     }
 
     /// Open a note, or the newest note when `initial_id` is absent. An editing open with no
@@ -324,12 +366,19 @@ impl NotesPage {
                 self.inner.refresh_selected();
             }
         }
+        self.inner.refresh_browser_rows();
     }
 
     /// Search note titles and bodies in the in-view browser and take focus there.
     pub fn set_query(&self, query: &str) {
-        self.inner.browse_search.set_text(query);
-        self.inner.enter_browser();
+        if self.enter_browser() {
+            self.inner.browse_search.set_text(query);
+        }
+    }
+
+    /// Focus the searchable note list without hiding the preview.
+    pub fn enter_browser(&self) -> bool {
+        self.inner.enter_browser()
     }
 
     /// Focus the editor or the most useful current view.
@@ -343,7 +392,7 @@ impl NotesPage {
         }
     }
 
-    fn save_current(&self) -> bool {
+    pub fn save_current(&self) -> bool {
         self.inner.save_current()
     }
 }
@@ -367,14 +416,12 @@ impl Inner {
             tr("Edit")
         });
         let editing = self.editing.get();
-        self.editor_scroll
-            .set_visible(editing && !self.browsing.get());
-        self.preview_scroll
-            .set_visible(!editing && !self.browsing.get());
-        self.browse.set_visible(self.browsing.get());
+        self.editor_scroll.set_visible(editing);
+        self.editor_separator.set_visible(editing);
+        self.preview_scroll.set_visible(true);
+        self.browse.set_visible(true);
         self.recovery_actions.set_visible(
             !editing
-                && !self.browsing.get()
                 && self
                     .selected_id
                     .borrow()
@@ -384,6 +431,7 @@ impl Inner {
         if let Some(note) = selected {
             if editing {
                 self.set_editor_text(&note.contents);
+                render_markdown(&self.preview.buffer(), &self.current_text());
             } else {
                 render_markdown(&self.preview.buffer(), &note.contents);
             }
@@ -391,16 +439,13 @@ impl Inner {
             render_markdown(&self.preview.buffer(), &tr("Create a note with Ctrl+N."));
         }
         self.footer.set_text(&if self.browsing.get() {
-            tr("Type to filter · Up/Down select · Enter open · Esc return")
+            tr("Type to filter · Up/Down select · Enter edit · Ctrl+K note options · Esc preview")
         } else if editing {
-            tr("Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+P notes")
+            tr("Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+Shift+N notes")
         } else {
-            tr("Enter edit · Ctrl+N new · Ctrl+P notes · Ctrl+F find · Esc close")
+            tr("Enter edit · Ctrl+N new · Ctrl+Shift+N notes · Ctrl+K options · Ctrl+Backspace delete · Esc close")
         });
         self.refresh_header_actions();
-        if self.browsing.get() {
-            self.refresh_browser_rows();
-        }
     }
 
     fn set_editor_text(&self, contents: &str) {
@@ -433,10 +478,10 @@ impl Inner {
                 if widget.widget_name() == "notes-edit-control"
                     || widget.widget_name() == "notes-more-control"
                 {
-                    widget.set_visible(has_note && !self.browsing.get());
+                    widget.set_visible(has_note);
                 }
                 if widget.widget_name() == "notes-browse-control" {
-                    widget.set_visible(!self.browsing.get());
+                    widget.set_visible(true);
                 }
                 child = next;
             }
@@ -514,13 +559,16 @@ impl Inner {
         match result {
             Ok(()) => {
                 self.editing.set(false);
+                self.find_bar.set_visible(false);
                 self.set_status(None, false);
                 self.refresh_selected();
+                self.refresh_browser_rows();
                 self.preview.grab_focus();
                 true
             }
             Err(error) => {
                 self.set_status(Some(&error.to_string()), true);
+                self.editor.grab_focus();
                 false
             }
         }
@@ -552,6 +600,7 @@ impl Inner {
         if !this.save_current() {
             return;
         }
+        this.browse_search.set_text("");
         let created = { this.store.borrow_mut().create("") };
         match created {
             Ok(note) => {
@@ -560,6 +609,7 @@ impl Inner {
                 this.editing.set(true);
                 this.set_status(None, false);
                 this.refresh_selected();
+                this.refresh_browser_rows();
                 this.editor.grab_focus();
                 this.editor
                     .buffer()
@@ -569,15 +619,15 @@ impl Inner {
         }
     }
 
-    fn enter_browser(&self) {
+    fn enter_browser(&self) -> bool {
         if self.editing.get() && !self.save_current() {
-            return;
+            return false;
         }
         self.browsing.set(true);
-        self.editing.set(false);
         self.refresh_selected();
         self.browse_search.grab_focus();
         self.refresh_browser_rows();
+        true
     }
 
     fn leave_browser(&self) {
@@ -587,6 +637,7 @@ impl Inner {
     }
 
     fn refresh_browser_rows(&self) {
+        self.suppress_browser_selection.set(true);
         while let Some(child) = self.browse_list.first_child() {
             self.browse_list.remove(&child);
         }
@@ -635,28 +686,105 @@ impl Inner {
             }
             ids.push(note.id);
         }
-        if !ids.is_empty()
-            && self.browse_list.selected_row().is_none()
-            && let Some(row) = self.browse_list.row_at_index(0)
+        let selected_index = selected_id
+            .as_deref()
+            .and_then(|selected| ids.iter().position(|id| id.as_str() == selected))
+            .or_else(|| (!ids.is_empty()).then_some(0));
+        *self.browse_ids.borrow_mut() = ids;
+        if let Some(index) = selected_index
+            && let Some(row) = self.browse_list.row_at_index(index as i32)
         {
             self.browse_list.select_row(Some(&row));
         }
-        *self.browse_ids.borrow_mut() = ids;
+        self.suppress_browser_selection.set(false);
+        let row_id = selected_index.and_then(|index| self.browse_ids.borrow().get(index).cloned());
+        if row_id.is_none() {
+            let selection_cleared =
+                !self.editing.get() && self.selected_id.borrow_mut().take().is_some();
+            if selection_cleared {
+                self.refresh_selected();
+            }
+        } else if row_id != selected_id
+            && let Some(index) = selected_index
+            && let Some(row) = self.browse_list.row_at_index(index as i32)
+        {
+            self.select_browser_row(&row);
+        }
     }
 
     fn activate_selected_row(&self) {
         let Some(row) = self.browse_list.selected_row() else {
             return;
         };
-        let Some(id) = self.browse_ids.borrow().get(row.index() as usize).cloned() else {
+        if !self.select_browser_row(&row) {
             return;
+        }
+        self.begin_editing();
+    }
+
+    fn select_browser_row(&self, row: &gtk::ListBoxRow) -> bool {
+        let Some(id) = self.browse_ids.borrow().get(row.index() as usize).cloned() else {
+            return false;
         };
-        *self.selected_id.borrow_mut() = Some(id);
-        self.browsing.set(false);
-        self.editing.set(false);
+        let current_id = self.selected_id.borrow().clone();
+        if current_id.as_deref() == Some(id.as_str()) {
+            return true;
+        }
+        if self.editing.get() && !self.save_current() {
+            if let Some(current_id) = current_id
+                && let Some(index) = self
+                    .browse_ids
+                    .borrow()
+                    .iter()
+                    .position(|candidate| candidate == &current_id)
+                && let Some(previous) = self.browse_list.row_at_index(index as i32)
+            {
+                self.browse_list.select_row(Some(&previous));
+            }
+            return false;
+        }
+        *self.selected_id.borrow_mut() = Some(id.clone());
+        self.browsing.set(true);
+        self.select_list_note(Some(&id));
         self.set_status(None, false);
         self.refresh_selected();
-        self.preview.grab_focus();
+        true
+    }
+
+    fn select_list_note(&self, id: Option<&str>) {
+        let row = id
+            .and_then(|id| {
+                self.browse_ids
+                    .borrow()
+                    .iter()
+                    .position(|candidate| candidate.as_str() == id)
+            })
+            .and_then(|index| self.browse_list.row_at_index(index as i32));
+        self.suppress_browser_selection.set(true);
+        self.browse_list.select_row(row.as_ref());
+        self.suppress_browser_selection.set(false);
+    }
+
+    fn select_visible_row(this: &Rc<Self>) {
+        let adjustment = this.browse_scroll.vadjustment();
+        let center = adjustment.value() + adjustment.page_size() / 2.0;
+        let mut nearest: Option<(gtk::ListBoxRow, f64)> = None;
+        let mut index = 0;
+        while let Some(row) = this.browse_list.row_at_index(index) {
+            if let Some(bounds) = row.compute_bounds(&this.browse_list) {
+                let row_center = f64::from(bounds.y() + bounds.height() / 2.0);
+                let distance = (row_center - center).abs();
+                if nearest.as_ref().is_none_or(|(_, best)| distance < *best) {
+                    nearest = Some((row, distance));
+                }
+            }
+            index += 1;
+        }
+        if let Some((row, _)) = nearest
+            && this.browse_list.selected_row().as_ref() != Some(&row)
+        {
+            this.browse_list.select_row(Some(&row));
+        }
     }
 
     fn show_find(this: &Rc<Self>) {
@@ -738,6 +866,7 @@ impl Inner {
                 self.set_status(Some(&tr("Recovered draft restored.")), false);
                 self.editing.set(false);
                 self.refresh_selected();
+                self.refresh_browser_rows();
             }
             Err(error) => self.set_status(Some(&error.to_string()), true),
         }
@@ -750,7 +879,8 @@ impl Inner {
         let Some(id) = self.selected_id.borrow().clone() else {
             return;
         };
-        match self.store.borrow_mut().discard_recovery(&id) {
+        let result = { self.store.borrow_mut().discard_recovery(&id) };
+        match result {
             Ok(()) => {
                 self.set_status(Some(&tr("Recovered draft discarded.")), false);
                 self.refresh_selected();
@@ -760,14 +890,17 @@ impl Inner {
     }
 
     fn export_current(this: &Rc<Self>) {
-        if this.editing.get() && !this.save_current() {
-            return;
-        }
+        this.more_popover.popdown();
         let Some(id) = this.selected_id.borrow().clone() else {
             return;
         };
+        if this.editing.get() && !this.save_current() {
+            return;
+        }
         let title = this
-            .selected_note()
+            .store
+            .borrow()
+            .note(&id)
             .map_or_else(|| tr("note"), |note| note.title());
         let safe_name = title
             .chars()
@@ -785,15 +918,23 @@ impl Inner {
             .initial_name(format!("{safe_name}.md"))
             .build();
         let Some(window) = this
-            .root
-            .root()
-            .and_then(|root| root.downcast::<gtk::Window>().ok())
+            .window
+            .borrow()
+            .as_ref()
+            .and_then(glib::WeakRef::upgrade)
         else {
             return;
         };
         let store = this.store.clone();
         let weak = Rc::downgrade(this);
+        let modal_changed = this.modal_changed.borrow().clone();
+        if let Some(callback) = &modal_changed {
+            callback(true);
+        }
         dialog.save(Some(&window), gtk::gio::Cancellable::NONE, move |result| {
+            if let Some(callback) = &modal_changed {
+                callback(false);
+            }
             let Some(path) = result.ok().and_then(|file| file.path()) else {
                 return;
             };
@@ -807,57 +948,51 @@ impl Inner {
         });
     }
 
-    fn confirm_delete(this: &Rc<Self>) {
-        if this.editing.get() && !this.save_current() {
-            return;
-        }
+    fn copy_current(this: &Rc<Self>) {
+        this.more_popover.popdown();
         let Some(id) = this.selected_id.borrow().clone() else {
             return;
         };
-        let dialog = adw::AlertDialog::new(
-            Some(&tr("Delete this note?")),
-            Some(&tr(
-                "This permanently deletes the note and its recovery draft.",
-            )),
-        );
-        dialog.add_responses(&[("cancel", &tr("Cancel")), ("delete", &tr("Delete Note"))]);
-        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-        dialog.set_default_response(Some("cancel"));
-        dialog.set_close_response("cancel");
-        let Some(parent) = this
-            .root
-            .root()
-            .and_then(|root| root.downcast::<gtk::Window>().ok())
-        else {
+        if this.editing.get() && !this.save_current() {
+            return;
+        }
+        let Some(note) = this.store.borrow().note(&id).cloned() else {
             return;
         };
-        let weak = Rc::downgrade(this);
-        dialog.choose(
-            Some(&parent),
-            gtk::gio::Cancellable::NONE,
-            move |response| {
-                if response != "delete" {
-                    return;
+        this.root.display().clipboard().set_text(&note.contents);
+        this.set_status(Some(&tr("Markdown copied to clipboard.")), false);
+    }
+
+    fn delete_current(this: &Rc<Self>) {
+        this.more_popover.popdown();
+        let Some(id) = this.selected_id.borrow().clone() else {
+            return;
+        };
+        if this.editing.get() && !this.save_current() {
+            return;
+        }
+        let removed = { this.store.borrow_mut().remove(&id) };
+        match removed {
+            Ok(()) => {
+                let next = this
+                    .store
+                    .borrow()
+                    .notes()
+                    .first()
+                    .map(|note| note.id.clone());
+                *this.selected_id.borrow_mut() = next;
+                this.editing.set(false);
+                this.set_status(None, false);
+                this.refresh_selected();
+                this.refresh_browser_rows();
+                if this.selected_id.borrow().is_some() {
+                    this.preview.grab_focus();
+                } else {
+                    this.browse_search.grab_focus();
                 }
-                let Some(inner) = weak.upgrade() else { return };
-                let removed = { inner.store.borrow_mut().remove(&id) };
-                match removed {
-                    Ok(()) => {
-                        let next = inner
-                            .store
-                            .borrow()
-                            .notes()
-                            .first()
-                            .map(|note| note.id.clone());
-                        *inner.selected_id.borrow_mut() = next;
-                        inner.editing.set(false);
-                        inner.set_status(None, false);
-                        inner.refresh_selected();
-                    }
-                    Err(error) => inner.set_status(Some(&error.to_string()), true),
-                }
-            },
-        );
+            }
+            Err(error) => this.set_status(Some(&error.to_string()), true),
+        }
     }
 
     fn close(&self) {
@@ -881,96 +1016,7 @@ impl Inner {
     }
 }
 
-/// Open notes in a small floating window. A failed write prevents the window from closing so the
-/// user's editor contents stay available for another save attempt.
-pub fn open_notes(
-    app: &adw::Application,
-    ctx: &Rc<AppContext>,
-    initial_id: Option<&str>,
-    editing: bool,
-    on_browse: impl Fn() + 'static,
-) -> Result<NotesPage, ConfigError> {
-    if let Some(inner) = ACTIVE_NOTES.with(|active| active.borrow().upgrade())
-        && let Some(window) = inner
-            .window
-            .borrow()
-            .as_ref()
-            .and_then(glib::WeakRef::upgrade)
-        && window.is_visible()
-    {
-        let page = NotesPage {
-            inner: inner.clone(),
-        };
-        page.begin(initial_id, editing);
-        window.present();
-        page.focus();
-        return Ok(page);
-    }
-    let store = Rc::new(RefCell::new(MarkdownNotesStore::open(
-        &ctx.xdg.app_data_dir(),
-    )?));
-    let page = NotesPage::new(store);
-    let window = adw::Window::builder()
-        .application(app)
-        .title(tr("Floating Markdown Notes"))
-        .default_width(640)
-        .default_height(520)
-        .content(page.widget())
-        .build();
-    *page.inner.window.borrow_mut() = Some(window.upcast_ref::<gtk::Window>().downgrade());
-    ACTIVE_NOTES.with(|active| *active.borrow_mut() = Rc::downgrade(&page.inner));
-    let weak_window = window.downgrade();
-    page.connect(
-        move || {
-            if let Some(window) = weak_window.upgrade() {
-                window.close();
-            }
-        },
-        on_browse,
-    );
-    let close_page = page.clone();
-    window.connect_close_request(move |_| {
-        if close_page.save_current() {
-            ACTIVE_NOTES.with(|active| {
-                let mut active = active.borrow_mut();
-                if active
-                    .upgrade()
-                    .is_some_and(|current| Rc::ptr_eq(&current, &close_page.inner))
-                {
-                    *active = Weak::new();
-                }
-            });
-            glib::Propagation::Proceed
-        } else {
-            glib::Propagation::Stop
-        }
-    });
-    page.begin(initial_id, editing);
-    window.present();
-    page.focus();
-    Ok(page)
-}
-
-fn connect_actions(inner: &Rc<Inner>, buttons: [&gtk::Button; 8]) {
-    let [
-        edit,
-        new_note,
-        browse,
-        to_launcher,
-        restore,
-        discard,
-        export,
-        delete,
-    ] = buttons;
-    edit.set_widget_name("notes-edit-control");
-    new_note.set_widget_name("notes-new-control");
-    browse.set_widget_name("notes-browse-control");
-    to_launcher.set_widget_name("notes-launcher-control");
-    // The More menu owns its action controls; their parent chain isn't in the root header, so
-    // the menu itself remains available and its actions safely no-op when no note is selected.
-    export.set_widget_name("notes-export-control");
-    delete.set_widget_name("notes-delete-control");
-
+fn connect_actions(inner: &Rc<Inner>) {
     let group = gio::SimpleActionGroup::new();
     for (name, callback) in [
         (
@@ -990,6 +1036,7 @@ fn connect_actions(inner: &Rc<Inner>, buttons: [&gtk::Button; 8]) {
                 let weak = Rc::downgrade(inner);
                 move || {
                     let Some(inner) = weak.upgrade() else { return };
+                    inner.more_popover.popdown();
                     if inner.editing.get() {
                         inner.save_current();
                     } else {
@@ -1059,7 +1106,18 @@ fn connect_actions(inner: &Rc<Inner>, buttons: [&gtk::Button; 8]) {
                 let weak = Rc::downgrade(inner);
                 move || {
                     if let Some(inner) = weak.upgrade() {
-                        Inner::confirm_delete(&inner);
+                        Inner::delete_current(&inner);
+                    }
+                }
+            }) as PlainCallback,
+        ),
+        (
+            "copy",
+            Rc::new({
+                let weak = Rc::downgrade(inner);
+                move || {
+                    if let Some(inner) = weak.upgrade() {
+                        Inner::copy_current(&inner);
                     }
                 }
             }) as PlainCallback,
@@ -1070,7 +1128,6 @@ fn connect_actions(inner: &Rc<Inner>, buttons: [&gtk::Button; 8]) {
         group.add_action(&action);
     }
     inner.root.insert_action_group("notes", Some(&group));
-    let _ = (restore, discard);
 }
 
 fn connect_editor(inner: &Rc<Inner>) {
@@ -1080,6 +1137,7 @@ fn connect_editor(inner: &Rc<Inner>) {
         if inner.suppress_editor_change.get() || !inner.editing.get() {
             return;
         }
+        render_markdown(&inner.preview.buffer(), &inner.current_text());
         Inner::schedule_recovery(&inner);
     });
 }
@@ -1092,11 +1150,37 @@ fn connect_browser(inner: &Rc<Inner>) {
         }
     });
     let weak = Rc::downgrade(inner);
+    inner.browse_list.connect_row_selected(move |_, row| {
+        let Some(inner) = weak.upgrade() else { return };
+        if inner.suppress_browser_selection.get() {
+            return;
+        }
+        if let Some(row) = row {
+            inner.select_browser_row(row);
+        }
+    });
+    let weak = Rc::downgrade(inner);
     inner.browse_list.connect_row_activated(move |_, _| {
         if let Some(inner) = weak.upgrade() {
             inner.activate_selected_row();
         }
     });
+
+    let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(inner);
+    scroll.connect_scroll(move |_, _, dy| {
+        if dy != 0.0 {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(inner) = weak.upgrade() {
+                    Inner::select_visible_row(&inner);
+                }
+            });
+        }
+        glib::Propagation::Proceed
+    });
+    inner.browse_scroll.add_controller(scroll);
 }
 
 fn connect_find(inner: &Rc<Inner>) {
@@ -1115,6 +1199,15 @@ fn connect_find(inner: &Rc<Inner>) {
 }
 
 fn connect_keys(inner: &Rc<Inner>) {
+    let weak = Rc::downgrade(inner);
+    inner.more_popover.connect_unmap(move |_| {
+        if let Some(inner) = weak.upgrade()
+            && inner.root.is_mapped()
+        {
+            NotesPage { inner }.focus();
+        }
+    });
+
     // Commands such as Ctrl+N must run before TextView's built-in keybindings. Escape is
     // different: let the focused text input process it first so an IME can cancel preedit.
     let keys = gtk::EventControllerKey::new();
@@ -1142,6 +1235,38 @@ fn connect_keys(inner: &Rc<Inner>) {
         })
     });
     inner.root.add_controller(escape_keys);
+
+    // Popovers use their own popup surface, so keys there may bypass the page's controller.
+    // Handle the note commands directly while leaving ordinary navigation to GTK.
+    let popover_keys = gtk::EventControllerKey::new();
+    popover_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(inner);
+    popover_keys.connect_key_pressed(move |_, key, _, state| {
+        let Some(inner) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        let control = state.contains(gdk::ModifierType::CONTROL_MASK);
+        if state.contains(gdk::ModifierType::ALT_MASK)
+            || state.contains(gdk::ModifierType::SUPER_MASK)
+        {
+            return glib::Propagation::Proceed;
+        }
+        if control && key == gdk::Key::BackSpace {
+            Inner::delete_current(&inner);
+            return glib::Propagation::Stop;
+        }
+        if key == gdk::Key::Escape
+            || (control
+                && key
+                    .to_unicode()
+                    .is_some_and(|character| character.eq_ignore_ascii_case(&'k')))
+        {
+            inner.more_popover.popdown();
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    inner.more_popover.add_controller(popover_keys);
 }
 
 fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
@@ -1165,6 +1290,17 @@ fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> gli
         }
         return glib::Propagation::Stop;
     }
+    if is_note_delete_shortcut(key, state, inner.editing.get()) {
+        Inner::delete_current(inner);
+        return glib::Propagation::Stop;
+    }
+    if inner.more_popover.is_visible() {
+        return glib::Propagation::Proceed;
+    }
+    if control && matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
+        inner.save_current();
+        return glib::Propagation::Stop;
+    }
     if !control && !shift && matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
         if !inner.editing.get() && !inner.browsing.get() && inner.preview.has_focus() {
             inner.begin_editing();
@@ -1181,7 +1317,10 @@ fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> gli
         return glib::Propagation::Proceed;
     }
     if !control {
-        if inner.browsing.get() && key == gdk::Key::Up {
+        let browse_focused = inner.browsing.get()
+            || inner.browse_search.has_focus()
+            || inner.browse_list.has_focus();
+        if browse_focused && key == gdk::Key::Up {
             let current = inner
                 .browse_list
                 .selected_row()
@@ -1191,7 +1330,7 @@ fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> gli
             }
             return glib::Propagation::Stop;
         }
-        if inner.browsing.get() && key == gdk::Key::Down {
+        if browse_focused && key == gdk::Key::Down {
             let current = inner
                 .browse_list
                 .selected_row()
@@ -1208,7 +1347,15 @@ fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> gli
         .map(|character| character.to_ascii_lowercase());
     match (character, key, shift) {
         (Some('n'), _, false) => Inner::create_blank(inner),
-        (Some('p'), _, false) => inner.enter_browser(),
+        (Some('n'), _, true) => {
+            inner.enter_browser();
+        }
+        (Some('p'), _, false) => {
+            inner.enter_browser();
+        }
+        (Some('k'), _, false) if inner.selected_id.borrow().is_some() => {
+            inner.more_popover.popup();
+        }
         (Some('f'), _, false) => Inner::show_find(inner),
         (Some('e'), _, false) => {
             if inner.editing.get() {
@@ -1232,19 +1379,18 @@ fn handle_key(inner: &Rc<Inner>, key: gdk::Key, state: gdk::ModifierType) -> gli
         (Some('d'), _, true) if !inner.editing.get() => inner.discard_recovery(),
         (Some('e'), _, true) => Inner::export_current(inner),
         (_, gdk::Key::Delete, false) if inner.preview.has_focus() => {
-            Inner::confirm_delete(inner);
+            Inner::delete_current(inner);
         }
         (Some('p'), _, true) => {
             inner.return_to_launcher();
         }
-        (None, gdk::Key::Return | gdk::Key::KP_Enter, true) => {
-            if inner.editing.get() {
-                inner.save_current();
-            }
-        }
         _ => return glib::Propagation::Proceed,
     }
     glib::Propagation::Stop
+}
+
+fn is_note_delete_shortcut(key: gdk::Key, state: gdk::ModifierType, editing: bool) -> bool {
+    !editing && key == gdk::Key::BackSpace && state.contains(gdk::ModifierType::CONTROL_MASK)
 }
 
 fn markdown_preview_view() -> gtk::TextView {
@@ -1542,5 +1688,18 @@ mod tests {
             Some("Name  │  Count".to_owned())
         );
         assert!(markdown_table_separator("---  │  :---:"));
+    }
+
+    #[test]
+    fn ctrl_backspace_deletes_notes_but_stays_a_text_editing_key() {
+        let control = gdk::ModifierType::CONTROL_MASK;
+        assert!(is_note_delete_shortcut(gdk::Key::BackSpace, control, false));
+        assert!(!is_note_delete_shortcut(gdk::Key::BackSpace, control, true));
+        assert!(!is_note_delete_shortcut(
+            gdk::Key::BackSpace,
+            gdk::ModifierType::empty(),
+            false,
+        ));
+        assert!(!is_note_delete_shortcut(gdk::Key::Delete, control, false));
     }
 }

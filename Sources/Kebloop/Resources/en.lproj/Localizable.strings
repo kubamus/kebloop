@@ -685,3 +685,11 @@
 "Save and preview (⌘E)" = "Save and preview (⌘E)";
 "⇧⌘R Restore · ⇧⌘D Discard" = "⇧⌘R Restore · ⇧⌘D Discard";
 "⌘↩ Save · ⌘F Find · Esc Preview" = "⌘↩ Save · ⌘F Find · Esc Preview";
+
+"Edit Note" = "Edit Note";
+"Copy Markdown" = "Copy Markdown";
+"Export Markdown…" = "Export Markdown…";
+"Delete Note…" = "Delete Note…";
+"Create a new Markdown note" = "Create a new Markdown note";
+"Show note actions (⌘K)" = "Show note actions (⌘K)";
+"Delete Note   ⌘⌫" = "Delete Note   ⌘⌫";

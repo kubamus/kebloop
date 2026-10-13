@@ -38,6 +38,7 @@ use self::results::{ResultList, RowStyle};
 use self::views::clipboard as clipboard_view;
 use self::views::emoji::EmojiView;
 use self::views::extension::ExtensionPage;
+use self::views::notes::NotesPage;
 use self::views::snippets::SnippetPage;
 use self::views::utilities::{UtilityKind, UtilityPage};
 use self::window::PanelWindow;
@@ -51,6 +52,8 @@ pub enum Mode {
     /// Root search.
     Root,
     Utility(UtilityKind),
+    /// Note browser, editor, and rendered preview in the launcher.
+    Notes,
     Raycast,
     /// Clipboard history.
     Clipboard,
@@ -84,13 +87,14 @@ impl Mode {
             Mode::Root => ViewKind::Root,
             Mode::Clipboard => ViewKind::Clipboard,
             Mode::Emoji => ViewKind::Emoji,
-            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => ViewKind::Form,
+            Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => ViewKind::Form,
             _ => ViewKind::List,
         }
     }
 
     fn title(&self) -> String {
         match self {
+            Mode::Notes => tr("Notes"),
             Mode::Raycast => tr("Raycast Compatibility"),
             Mode::Utility(kind) => tr(match kind {
                 UtilityKind::Dictionary => "Dictionary Lookup",
@@ -114,6 +118,7 @@ impl Mode {
 
     fn placeholder(&self) -> String {
         match self {
+            Mode::Notes => tr("Search notes"),
             Mode::Raycast => tr("Tab through imports and reviewed commands"),
             Mode::Utility(UtilityKind::Dictionary) => tr("Enter a word…"),
             Mode::Utility(_) => tr("Return to activate · Esc back"),
@@ -136,6 +141,7 @@ impl Mode {
         match self {
             Mode::Utility(_) => "utility",
             Mode::Raycast => "raycast",
+            Mode::Notes => "notes",
             Mode::Emoji => "emoji",
             Mode::Snippet => "snippet",
             Mode::Extension(_) => "extension",
@@ -199,6 +205,7 @@ struct Inner {
     extension: ExtensionPage,
     utility: UtilityPage,
     raycast: views::raycast::RaycastPage,
+    notes: RefCell<Option<NotesPage>>,
     message: gtk::Label,
     actions: ActionMenu,
     state: RefCell<State>,
@@ -379,6 +386,7 @@ impl Launcher {
             extension,
             utility,
             raycast,
+            notes: RefCell::new(None),
             message,
             actions,
             state: RefCell::new(State {
@@ -484,6 +492,12 @@ impl Launcher {
                     if inner.was_active.get()
                         && !inner.confirming.get()
                         && !inner.actions.is_open()
+                        && !(launcher.mode() == Mode::Notes
+                            && inner
+                                .notes
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(NotesPage::is_actions_open))
                         && window.is_visible()
                         && !window.is_active()
                     {
@@ -688,8 +702,13 @@ impl Launcher {
             let output = ctx.with_settings(|s| fixed_output(&s.personalization));
             inner.panel.set_output(output.as_ref());
         }
-        inner.panel_box.set_width_request(metrics.width);
-        inner.panel.set_width(metrics.width);
+        let width = if self.mode() == Mode::Notes {
+            metrics.width.max(760)
+        } else {
+            metrics.width
+        };
+        inner.panel_box.set_width_request(width);
+        inner.panel.set_width(width);
         inner.list.set_style(RowStyle {
             show_hint: show_hints,
             icon_px: metrics.icon_px,
@@ -812,6 +831,9 @@ impl Launcher {
 
     /// Hide the launcher.
     pub fn hide(&self) {
+        if !self.save_notes() {
+            return;
+        }
         self.inner.utility.cancel();
         let inner = &self.inner;
         inner.opening.set(false);
@@ -854,10 +876,79 @@ impl Launcher {
 
     fn focus_input(&self) {
         let inner = &self.inner;
+        if self.mode() == Mode::Notes {
+            if let Some(page) = inner.notes.borrow().as_ref() {
+                page.focus();
+            }
+            return;
+        }
         if inner.input.is_visible() {
             inner.input.grab_focus();
             inner.input.set_position(-1);
         }
+    }
+
+    fn save_notes(&self) -> bool {
+        self.inner
+            .notes
+            .borrow()
+            .as_ref()
+            .is_none_or(NotesPage::save_current)
+    }
+
+    fn show_notes(&self, editing: bool, query: Option<&str>) {
+        if !self.save_notes() {
+            return;
+        }
+        if self.inner.notes.borrow().is_none() {
+            let Some(ctx) = self.ctx() else { return };
+            let store =
+                match kebloop_services::notes::MarkdownNotesStore::open(&ctx.xdg.app_data_dir()) {
+                    Ok(store) => Rc::new(RefCell::new(store)),
+                    Err(error) => {
+                        self.fail(error.to_string());
+                        return;
+                    }
+                };
+            let page = NotesPage::new(store);
+            page.bind_window(self.window());
+            page.register_as_active();
+            let weak = self.downgrade();
+            let browse_weak = self.downgrade();
+            page.connect(
+                move || {
+                    if let Some(launcher) = weak.upgrade() {
+                        launcher.hide();
+                    }
+                },
+                move || {
+                    if let Some(launcher) = browse_weak.upgrade() {
+                        launcher.show();
+                    }
+                },
+            );
+            let weak = self.downgrade();
+            page.connect_modal_changed(move |modal| {
+                if let Some(launcher) = weak.upgrade() {
+                    launcher.set_confirming(modal);
+                }
+            });
+            // Hidden note panes should not keep the normal launcher unnecessarily wide.
+            self.inner.stack.set_hhomogeneous(false);
+            self.inner.stack.add_named(page.widget(), Some("notes"));
+            *self.inner.notes.borrow_mut() = Some(page);
+        }
+        self.set_mode(Mode::Notes);
+        if let Some(page) = self.inner.notes.borrow().as_ref() {
+            if editing {
+                page.begin(None, true);
+            } else {
+                page.begin(None, false);
+                page.set_query(query.unwrap_or(""));
+            }
+            page.focus();
+        }
+        self.inner.panel.fit_to_content();
     }
 
     // ----- modes and chrome -----------------------------------------------------------------
@@ -869,6 +960,9 @@ impl Launcher {
 
     /// Switch to `mode` with an empty query.
     pub fn set_mode(&self, mode: Mode) {
+        if !self.save_notes() {
+            return;
+        }
         self.inner.utility.cancel();
         let inner = &self.inner;
         if !matches!(mode, Mode::Extension(_)) {
@@ -884,7 +978,7 @@ impl Launcher {
         self.set_query_silently("");
         self.show_page();
         match &mode {
-            Mode::Raycast => {}
+            Mode::Raycast | Mode::Notes => {}
             Mode::Utility(kind) => inner.utility.begin(*kind),
             Mode::Emoji => {
                 let recents = self
@@ -917,6 +1011,13 @@ impl Launcher {
         let Some(ctx) = self.ctx() else { return };
         let inner = &self.inner;
         let mode = self.mode();
+        let width = if mode == Mode::Notes {
+            inner.metrics.get().width.max(760)
+        } else {
+            inner.metrics.get().width
+        };
+        inner.panel_box.set_width_request(width);
+        inner.panel.set_width(width);
         let profile = ctx.config.borrow().active_profile_name().to_owned();
         let title = if mode == Mode::Root || profile.is_empty() {
             mode.title()
@@ -930,7 +1031,7 @@ impl Launcher {
         inner.search_icon.set_visible(is_root);
         inner
             .input
-            .set_visible(!matches!(mode, Mode::Snippet | Mode::Raycast));
+            .set_visible(!matches!(mode, Mode::Snippet | Mode::Notes | Mode::Raycast));
         inner.clear_button.set_visible(mode == Mode::Clipboard);
         inner
             .clear_button
@@ -953,7 +1054,7 @@ impl Launcher {
         inner.actions_button.set_visible(
             mode != Mode::Snippet
                 && mode != Mode::Emoji
-                && !matches!(mode, Mode::Utility(_) | Mode::Raycast),
+                && !matches!(mode, Mode::Notes | Mode::Utility(_) | Mode::Raycast),
         );
         inner
             .actions_button
@@ -994,7 +1095,7 @@ impl Launcher {
     fn has_actionable_selection(&self) -> bool {
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.selected_result().is_some(),
-            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => false,
+            Mode::Emoji | Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => false,
             _ => self.selected_item().is_some(),
         }
     }
@@ -1011,7 +1112,12 @@ impl Launcher {
         let mode = self.mode();
         if matches!(
             mode,
-            Mode::Emoji | Mode::Snippet | Mode::Extension(_) | Mode::Utility(_) | Mode::Raycast
+            Mode::Emoji
+                | Mode::Snippet
+                | Mode::Notes
+                | Mode::Extension(_)
+                | Mode::Utility(_)
+                | Mode::Raycast
         ) {
             return;
         }
@@ -1159,9 +1265,12 @@ impl Launcher {
                 }
                 items
             }
-            Mode::Emoji | Mode::Snippet | Mode::Extension(_) | Mode::Utility(_) | Mode::Raycast => {
-                Vec::new()
-            }
+            Mode::Emoji
+            | Mode::Snippet
+            | Mode::Notes
+            | Mode::Extension(_)
+            | Mode::Utility(_)
+            | Mode::Raycast => Vec::new(),
         };
 
         let selected = previous_id
@@ -1227,7 +1336,7 @@ impl Launcher {
                 self.schedule_extension_search();
                 self.update_chrome();
             }
-            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
+            Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => {}
             Mode::Root => {
                 if let Some(ctx) = self.ctx() {
                     crate::services::rates::request(&ctx, &self.query());
@@ -1338,6 +1447,17 @@ impl Launcher {
     }
 
     fn on_key(&self, keyval: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
+        if self.mode() == Mode::Notes {
+            if let Some((key, mods)) = translate_key(keyval, state)
+                && mods == Mods::CTRL
+                && matches!(key, Key::Char('q') | Key::Char(','))
+            {
+                self.run_key_action(keys::decide(key, mods, self.key_state()));
+                return glib::Propagation::Stop;
+            }
+            // Notes owns navigation, editing, find, and the note action popover.
+            return glib::Propagation::Proceed;
+        }
         if !self.inner.preedit.get() {
             if self.mode() == Mode::Root
                 && state.is_empty()
@@ -1351,18 +1471,7 @@ impl Launcher {
                     return glib::Propagation::Stop;
                 }
                 if let Some(query) = query.strip_prefix("notes ") {
-                    if let Some(ctx) = self.ctx() {
-                        let launcher = self.clone();
-                        match views::notes::open_notes(&ctx.app, &ctx, None, false, move || {
-                            launcher.show()
-                        }) {
-                            Ok(page) => {
-                                self.hide();
-                                page.set_query(query);
-                            }
-                            Err(e) => self.fail(e.to_string()),
-                        }
-                    }
+                    self.show_notes(false, Some(query));
                     return glib::Propagation::Stop;
                 }
             }
@@ -1475,7 +1584,7 @@ impl Launcher {
     fn move_selection(&self, delta: isize) {
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.move_selection(delta),
-            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
+            Mode::Emoji | Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => {}
             _ => {
                 let current = self.inner.list.selected();
                 self.select_index(current.saturating_add_signed(delta));
@@ -1487,7 +1596,7 @@ impl Launcher {
         self.inner.selection_touched.set(true);
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.select(index),
-            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
+            Mode::Emoji | Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => {}
             _ => self.inner.list.select(index, false),
         }
     }
@@ -1496,7 +1605,7 @@ impl Launcher {
     pub fn perform_selected(&self) {
         match self.mode() {
             Mode::Emoji => self.inner.emoji.activate_selected(),
-            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
+            Mode::Snippet | Mode::Notes | Mode::Utility(_) | Mode::Raycast => {}
             Mode::Extension(_) => {
                 if let Some(result) = self.inner.extension.selected_result()
                     && let Some(action) = result.actions.first()

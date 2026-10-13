@@ -133,7 +133,6 @@ private final class ResultButton: NSButton {
 
 @MainActor
 final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
-    var onNote: ((String) -> Void)?
     var noteStore: (() -> MarkdownNoteStore)?
     var onScript: ((ScriptCommand, [String]) -> Void)?
     var onExtension: ((ExtensionManifest) -> Void)?
@@ -194,6 +193,20 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private let lookupDefinition: @Sendable (String) -> String?
     private let rows = FlippedStackView()
     private let scrollView = NSScrollView()
+    private let resultsBody = NSStackView()
+    private let notePreviewHost = NSView()
+    private var notePreviewHostingView: NSView?
+    private var noteEditorSession: MarkdownNoteSession?
+    private var notesHasUnsavedDraft = false
+    var currentPreviewNoteID: String? {
+        guard mode == .notes else { return nil }
+        if let session = noteEditorSession { return session.selectedNoteID }
+        guard results.indices.contains(selection), case .note(let note) = results[selection] else { return nil }
+        return note.id
+    }
+    var currentEditingNoteID: String? { noteEditorSession?.editingNoteID }
+    var hasUnsavedNoteDraft: Bool { notesHasUnsavedDraft }
+    func saveNotes() -> Bool { noteEditorSession?.saveAndPreview() ?? true }
     private var scrollHeight: NSLayoutConstraint!
     private let backButton = NSButton()
     private let searchIcon = NSImageView()
@@ -300,11 +313,16 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 return event
             }
             if (self.panel.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+            if self.handleNoteDeleteKey(event) { return nil }
             if event.modifierFlags.intersection([.command, .option, .control]) == .command,
                event.charactersIgnoringModifiers?.lowercased() == "n" {
                 if event.modifierFlags.contains(.shift) { self.enter(.notes) }
-                else { self.onCommand?(.newNote) }
+                else { self.createNote() }
                 return nil
+            }
+            if self.mode == .notes, self.noteEditorSession != nil {
+                if LauncherKeyboard.isActionShortcut(event) { self.showActions(); return nil }
+                return event
             }
             if self.mode == .dictionary || self.mode == .dictation {
                 return self.handleUtilityKey(event) ? nil : event
@@ -489,7 +507,18 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         scrollView.documentView = rows
         scrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 330)
         scrollHeight.isActive = true
-        container.addArrangedSubview(scrollView)
+        resultsBody.orientation = .horizontal
+        resultsBody.alignment = .top
+        resultsBody.spacing = 0
+        resultsBody.addArrangedSubview(scrollView)
+        resultsBody.addArrangedSubview(notePreviewHost)
+        notePreviewHost.isHidden = true
+        notePreviewHost.widthAnchor.constraint(equalTo: resultsBody.widthAnchor, multiplier: 0.55).isActive = true
+        notePreviewHost.heightAnchor.constraint(equalTo: scrollView.heightAnchor).isActive = true
+        container.addArrangedSubview(resultsBody)
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.publisher(for: NSScrollView.didLiveScrollNotification, object: scrollView)
+            .sink { [weak self] _ in self?.previewVisibleNote() }.store(in: &subscriptions)
         utilityHeight?.isActive = false
         utilityHeight = utilityHost.heightAnchor.constraint(equalToConstant: 330)
         utilityHeight.isActive = true
@@ -512,6 +541,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         else { show() }
     }
     func show() {
+        guard saveNotes() else { focusInput(); return }
+        noteEditorSession = nil
         inlineDictation?.cancel()
         dictationDeliveryTask?.cancel()
         cancelDictionaryLookup()
@@ -548,14 +579,25 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private func focusInput() {
         panel.makeKeyAndOrderFront(nil)
+        if noteEditorSession != nil {
+            let editor = noteEditorSession?.isEditing == true ? noteTextView(in: utilityHostingView) : nil
+            panel.makeFirstResponder(editor ?? utilityHostingView)
+            return
+        }
         if mode == .dictation { panel.makeFirstResponder(utilityHostingView); return }
         // Re-entering an active field editor can replace text typed during activation.
         if let editor = input.currentEditor(), panel.firstResponder === editor { return }
         panel.makeFirstResponder(input)
     }
 
+    private func noteTextView(in view: NSView?) -> MarkdownNoteTextView? {
+        guard let view else { return nil }
+        if let editor = view as? MarkdownNoteTextView { return editor }
+        return view.subviews.lazy.compactMap { self.noteTextView(in: $0) }.first
+    }
+
     func dismiss(restoreFocus: Bool = true) {
-        guard panel.isVisible, !isConfirmingClear else { return }
+        guard panel.isVisible, !isConfirmingClear, saveNotes() else { return }
         inlineDictation?.cancel()
         cancelDictionaryLookup()
         actionsMenu.close(restoreFocus: false)
@@ -615,6 +657,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
     @objc private func goBack() { enter(.root) }
     private func enter(_ next: LauncherMode) {
+        guard saveNotes() else { return }
+        noteEditorSession = nil
         if mode == .dictation { inlineDictation?.cancel() }
         cancelDictionaryLookup()
         if next == .notes { connectNotes() }
@@ -629,6 +673,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         selection = 0
         files.stop()
         updateResults()
+        positionPanel()
         if next == .dictation { panel.makeFirstResponder(utilityHostingView) }
         else { panel.makeFirstResponder(input) }
     }
@@ -639,8 +684,71 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         loadedNotes = store
         notesSubscription = store.$notes.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
             guard let self, self.mode == .notes, self.panel.isVisible else { return }
-            self.updateResults(preserveSelection: true)
+            if self.noteEditorSession == nil { self.updateResults(preserveSelection: true) }
         }
+    }
+
+    func createNote() {
+        guard saveNotes() else { return }
+        if !panel.isVisible { show() }
+        enter(.notes)
+        guard let store = loadedNotes, let note = store.create(contents: ""), store.note(id: note.id) != nil else {
+            message = loadedNotes?.error
+            updateResults()
+            return
+        }
+        showNote(id: note.id)
+    }
+
+    func showNote(id: String, editing: Bool = true) {
+        guard saveNotes() else { return }
+        if !panel.isVisible { show() }
+        enter(.notes)
+        guard let store = loadedNotes, store.note(id: id) != nil else { return }
+        let session = MarkdownNoteSession(store: store, onClose: { [weak self] in self?.dismiss() },
+            onUnsavedDraftChanged: { [weak self] pending in self?.notesHasUnsavedDraft = pending })
+        noteEditorSession = session
+        session.open(initialNoteID: id, initiallyEditing: editing)
+        render()
+        positionPanel()
+    }
+
+    private func renderNotePreview() {
+        notePreviewHostingView?.removeFromSuperview()
+        let source = currentPreviewNoteID.flatMap { loadedNotes?.note(id: $0)?.contents }
+        let view = AnyView(VStack(alignment: .leading, spacing: 10) {
+            if let source {
+                MarkdownPreview(source: source)
+            } else {
+                Text(L("New Note")).font(.headline)
+                Text(L("Create a new Markdown note")).foregroundStyle(.secondary)
+                Spacer()
+            }
+        }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading))
+        let host = NSHostingView(rootView: view)
+        host.translatesAutoresizingMaskIntoConstraints = false
+        notePreviewHost.addSubview(host)
+        NSLayoutConstraint.activate([
+            host.leadingAnchor.constraint(equalTo: notePreviewHost.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: notePreviewHost.trailingAnchor),
+            host.topAnchor.constraint(equalTo: notePreviewHost.topAnchor),
+            host.bottomAnchor.constraint(equalTo: notePreviewHost.bottomAnchor)
+        ])
+        notePreviewHostingView = host
+    }
+
+    private func previewVisibleNote() {
+        guard mode == .notes, noteEditorSession == nil,
+              rows.arrangedSubviews.indices.contains(selection) else { return }
+        let visible = scrollView.contentView.bounds
+        guard !visible.intersects(rows.arrangedSubviews[selection].frame),
+              let next = rows.arrangedSubviews.indices.first(where: {
+                  results.indices.contains($0) && visible.intersects(rows.arrangedSubviews[$0].frame)
+              }) else { return }
+        (rows.arrangedSubviews[selection] as? ResultButton)?.setSelected(false)
+        selection = next
+        (rows.arrangedSubviews[selection] as? ResultButton)?.setSelected(true)
+        renderNotePreview()
     }
 
     private func cancelDictionaryLookup() {
@@ -722,7 +830,19 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         aiButton.isHidden = true
         actionButton.isHidden = true
         let view: AnyView
-        if mode == .dictionary {
+        if let session = noteEditorSession, let store = loadedNotes {
+            if utilityHostingView != nil { resizeUtility(); return }
+            view = AnyView(MarkdownNotesView(store: store, initialNoteID: session.selectedNoteID,
+                initiallyEditing: session.isEditing, onBrowse: { [weak self] in self?.enter(.notes) },
+                onActions: { [weak self] in self?.showActions() },
+                onExport: { [weak self, weak session] in
+                    guard let id = session?.selectedNoteID else { return }
+                    self?.performNoteAction(.exportNote, id: id)
+                }, onDelete: { [weak self, weak session] in
+                    guard let id = session?.selectedNoteID else { return }
+                    self?.performNoteAction(.deleteNote, id: id)
+                }, session: session))
+        } else if mode == .dictionary {
             view = AnyView(LauncherDictionaryView(word: input.stringValue, definition: dictionaryDefinition,
                 loading: dictionaryLoading, lookedUp: dictionaryLookedUp, onLookup: { [weak self] in self?.lookupDictionary() }))
         } else if let service = inlineDictation {
@@ -745,7 +865,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private func resizeUtility() {
         let old = panel.frame
-        panel.setFrame(NSRect(x: old.minX, y: old.maxY - 409, width: personalization.settings.panelWidth, height: 409), display: true)
+        panel.setFrame(NSRect(x: old.minX, y: old.maxY - 409, width: mode == .notes ? max(760, personalization.settings.panelWidth) : personalization.settings.panelWidth, height: 409), display: true)
     }
 
     private func updateResults(preserveSelection: Bool = false) {
@@ -842,6 +962,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         guard previous != selection else { return }
         (rows.arrangedSubviews[previous] as? ResultButton)?.setSelected(false)
         (rows.arrangedSubviews[selection] as? ResultButton)?.setSelected(true)
+        if mode == .notes { renderNotePreview() }
         rows.layoutSubtreeIfNeeded()
         if rows.arrangedSubviews.indices.contains(selection) {
             rows.scrollToVisible(rows.arrangedSubviews[selection].frame)
@@ -853,11 +974,13 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         let interval = OSSignpostID(log: Self.performanceLog)
         os_signpost(.begin, log: Self.performanceLog, name: "Render rows", signpostID: interval)
         defer { os_signpost(.end, log: Self.performanceLog, name: "Render rows", signpostID: interval) }
-        let isUtility = mode == .dictionary || mode == .dictation
+        let isUtility = mode == .dictionary || mode == .dictation || noteEditorSession != nil
         utilityHost.isHidden = !isUtility
+        resultsBody.isHidden = isUtility
+        notePreviewHost.isHidden = mode != .notes
         scrollView.isHidden = isUtility
-        input.isEditable = mode != .dictation
-        input.isSelectable = mode != .dictation
+        input.isEditable = mode != .dictation && noteEditorSession == nil
+        input.isSelectable = mode != .dictation && noteEditorSession == nil
         if isUtility { renderUtility(); return }
         utilityHostingView?.removeFromSuperview()
         utilityHostingView = nil
@@ -928,7 +1051,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 icon = NSImage(systemSymbolName: "note.text", accessibilityDescription: nil)
                 title = note.title
                 subtitle = note.modifiedAt.formatted(date: .abbreviated, time: .shortened)
-                action = L("Preview")
+                action = L("Edit")
             case .script(let script):
                 icon = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
                 title = script.title; subtitle = script.description; action = L("Run")
@@ -1031,11 +1154,13 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             button.setSelected(position == selection)
             button.contextInvoke = { [weak self] in
                 guard let self, let position = self.results.firstIndex(where: { $0.id == result.id }) else { return }
-                self.selection = position; self.showActions()
+                self.selection = position; if self.mode == .notes { self.renderNotePreview() }; self.showActions()
             }
             button.invoke = { [weak self] in
                 guard let self, let current = self.results.firstIndex(where: { $0.id == result.id }) else { return }
-                self.selection = current; self.performSelected()
+                self.selection = current
+                if case .note = result { self.render(); self.focusInput() }
+                else { self.performSelected() }
             }
             rows.addArrangedSubview(button)
             button.widthAnchor.constraint(equalTo: rows.widthAnchor, constant: -12).isActive = true
@@ -1052,12 +1177,14 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         let resultHeight: Int = results.isEmpty ? 48 : Int(Double(results.count) * (rowHeight + 2)) - 2
         let errorHeight = message != nil && !results.isEmpty ? 42 : 0
         let documentHeight = CGFloat(resultHeight + errorHeight + 8)
-        let visibleHeight = min(documentHeight, 330)
-        rows.setFrameSize(NSSize(width: personalization.settings.panelWidth, height: documentHeight))
+        let visibleHeight = mode == .notes ? 330 : min(documentHeight, 330)
+        let panelWidth = mode == .notes ? max(760, personalization.settings.panelWidth) : personalization.settings.panelWidth
+        rows.setFrameSize(NSSize(width: mode == .notes ? panelWidth * 0.45 : panelWidth, height: documentHeight))
         scrollHeight.constant = visibleHeight
         let height = CGFloat(79) + visibleHeight
         let old = panel.frame
-        panel.setFrame(NSRect(x: old.minX, y: old.maxY - height, width: personalization.settings.panelWidth, height: height), display: true)
+        panel.setFrame(NSRect(x: old.minX, y: old.maxY - height, width: panelWidth, height: height), display: true)
+        if mode == .notes { renderNotePreview() }
     }
 
     private var rowHeight: Double { max(personalization.settings.compact ? 40 : 48, personalization.settings.textSize * 2 + 16) }
@@ -1094,6 +1221,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     func executeCommand(id: String) {
         guard personalization.settings.commandsEnabled else { return }
+        guard saveNotes() else { focusInput(); return }
         if let script = scripts.commands.first(where: { $0.commandID == id && $0.enabled }) { onScript?(script, []); return }
         if let manifest = extensions.manifests.first(where: { $0.commandID == id && $0.enabled }) { onExtension?(manifest); return }
         if id.hasPrefix("snippet:"), let snippet = snippets.snippets.first(where: { "snippet:" + $0.id == id }) {
@@ -1144,7 +1272,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         guard let screen else { return }
         let area = screen.visibleFrame
         var frame = panel.frame
-        frame.size.width = min(config.panelWidth, area.width)
+        frame.size.width = min(mode == .notes ? max(760, config.panelWidth) : config.panelWidth, area.width)
         frame.size.height = min(frame.height, area.height)
         frame.origin.x = max(area.minX, min(area.maxX - frame.width, area.midX - frame.width / 2))
         frame.origin.y = max(area.minY, min(area.maxY - frame.height, area.maxY - max(80, area.height * 0.2) - frame.height))
@@ -1188,6 +1316,10 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         if mode == .calculationHistory {
             add(.open); add(.clearCalculationHistory); return items
         }
+        if case .note = result {
+            for action in [ResultAction.editNote, .copyMarkdown, .exportNote, .deleteNote] { add(action) }
+            return items
+        }
         if case .script = result { add(.open); add(.runWithInput); return items }
         if case .clipboard(let entry) = result {
             for action in ResultAction.available(kind: .clipboard, pinned: entry.isPinned, hasPlainText: !entry.text.isEmpty) {
@@ -1205,9 +1337,13 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     @objc func showActions() {
         if actionsMenu.isVisible { actionsMenu.close(); return }
-        guard results.indices.contains(selection) else { return }
-        let result = results[selection]
-        let title = rows.arrangedSubviews.indices.contains(selection) ? rows.arrangedSubviews[selection].accessibilityLabel() ?? mode.title : mode.title
+        let result: LauncherResult
+        if let note = noteEditorSession?.selectedNote { result = .note(note) }
+        else {
+            guard results.indices.contains(selection) else { return }
+            result = results[selection]
+        }
+        let title = noteEditorSession?.selectedNote?.title ?? (rows.arrangedSubviews.indices.contains(selection) ? rows.arrangedSubviews[selection].accessibilityLabel() ?? mode.title : mode.title)
         actionsMenu.show(items: actionItems(for: result), title: title, parent: panel,
                          opaque: !personalization.settings.transparency || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
                          onChoose: { [weak self] action in self?.performResultAction(action, resultID: result.id) },
@@ -1229,6 +1365,10 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     func handleActionKey(_ event: NSEvent) -> Bool { actionsMenu.handleKey(event) }
 
     private func performResultAction(_ action: ResultAction, resultID: String) {
+        if resultID.hasPrefix("note:"), [.editNote, .copyMarkdown, .exportNote, .deleteNote].contains(action) {
+            performNoteAction(action, id: String(resultID.dropFirst(5)))
+            return
+        }
         guard let position = results.firstIndex(where: { $0.id == resultID }) else {
             message = L("This result is no longer available."); render(); return
         }
@@ -1237,6 +1377,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         let path: String?
         switch result { case .file(let file): path = file.path; case .application(let app): path = app.path; default: path = nil }
         switch action {
+        case .editNote, .copyMarkdown, .exportNote, .deleteNote: break
         case .removeClipboardItem:
             guard case .clipboard(let entry) = result else { return }
             clipboard.remove(id: entry.id)
@@ -1325,6 +1466,52 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 }
             }
         }
+    }
+
+    @discardableResult
+    func handleNoteDeleteKey(_ event: NSEvent) -> Bool {
+        guard mode == .notes, noteEditorSession == nil,
+              LauncherKeyboard.isNoteDeleteShortcut(event),
+              results.indices.contains(selection), case .note(let note) = results[selection] else { return false }
+        performNoteAction(.deleteNote, id: note.id)
+        return true
+    }
+
+    private func performNoteAction(_ action: ResultAction, id: String) {
+        let wasEditing = noteEditorSession?.isEditing == true
+        guard saveNotes(), let store = loadedNotes, let note = store.note(id: id) else { return }
+        switch action {
+        case .editNote:
+            if let session = noteEditorSession { _ = session.toggleEditing() }
+            else { showNote(id: id) }
+        case .copyMarkdown:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(note.contents, forType: .string)
+        case .exportNote:
+            let picker = NSSavePanel()
+            picker.title = L("Export Markdown Note")
+            picker.nameFieldStringValue = note.title.replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-") + ".md"
+            picker.allowedContentTypes = [.plainText]
+            isConfirmingClear = true
+            let response = picker.runModal()
+            isConfirmingClear = false
+            if response == .OK, let url = picker.url {
+                do { try store.export(id: id, to: url) }
+                catch { message = error.localizedDescription }
+            }
+        case .deleteNote:
+            store.remove(id: id)
+            if store.note(id: id) == nil {
+                if noteEditorSession != nil { enter(.notes) }
+            } else { message = store.error }
+        default: break
+        }
+        if wasEditing, action != .editNote, let session = noteEditorSession, !session.isEditing {
+            _ = session.toggleEditing()
+        }
+        if noteEditorSession == nil { updateResults(preserveSelection: true) }
+        focusInput()
     }
 
     @objc private func askAI() {
@@ -1442,7 +1629,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 enter(.dictionary)
                 if let word { setQuery(word); lookupDictionary() }
             case .dictation: enter(.dictation)
-            case .newNote: onCommand?(command)
+            case .newNote: createNote()
             case .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .raycastImport, .raycastExtensions, .windowLayouts: onCommand?(command)
             case .scripts, .extensions: onCommand?(command)
             case .clipboard: enter(.clipboard)
@@ -1472,7 +1659,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             }
             usage[context.resultID, default: 0] += 1
             UserDefaults.standard.set(usage, forKey: "usage")
-        case .note(let note): onNote?(note.id)
+        case .note(let note): showNote(id: note.id)
         case .script(let script): onScript?(script, [])
         case .userExtension(let manifest): onExtension?(manifest)
         case .snippet(let snippet):

@@ -7,9 +7,11 @@ struct MarkdownNotesView: View {
     let initialNoteID: String?
     let initiallyEditing: Bool
     let onBrowse: () -> Void
+    let onActions: (() -> Void)?
+    let onExport: (() -> Void)?
+    let onDelete: (() -> Void)?
 
     @StateObject private var session: MarkdownNoteSession
-    @State private var confirmsDelete = false
 
     init(
         store: MarkdownNoteStore,
@@ -17,13 +19,20 @@ struct MarkdownNotesView: View {
         initiallyEditing: Bool = false,
         onClose: @escaping () -> Void = {},
         onUnsavedDraftChanged: @escaping (Bool) -> Void = { _ in },
-        onBrowse: @escaping () -> Void = {}
+        onBrowse: @escaping () -> Void = {},
+        onActions: (() -> Void)? = nil,
+        onExport: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil,
+        session: MarkdownNoteSession? = nil
     ) {
         self.store = store
         self.initialNoteID = initialNoteID
         self.initiallyEditing = initiallyEditing
         self.onBrowse = onBrowse
-        _session = StateObject(wrappedValue: MarkdownNoteSession(
+        self.onActions = onActions
+        self.onExport = onExport
+        self.onDelete = onDelete
+        _session = StateObject(wrappedValue: session ?? MarkdownNoteSession(
             store: store,
             onClose: onClose,
             onUnsavedDraftChanged: onUnsavedDraftChanged
@@ -40,17 +49,26 @@ struct MarkdownNotesView: View {
             if let note = selectedNote {
                 if session.hasRecoveryDraft { recoveryActions }
                 if session.isEditing {
-                    MarkdownNoteEditor(
-                        text: Binding(get: { session.draft }, set: session.setDraft),
-                        focusRevision: session.editorFocusRevision,
-                        findRequest: session.findRequest
-                    )
-                    .id(session.editingNoteID)
-                    .accessibilityLabel(L("Markdown note editor"))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack(spacing: 0) {
+                        MarkdownNoteEditor(
+                            text: Binding(get: { session.draft }, set: session.setDraft),
+                            focusRevision: session.editorFocusRevision,
+                            findRequest: session.findRequest
+                        )
+                        .id(session.editingNoteID)
+                        .accessibilityLabel(L("Markdown note editor"))
+                        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+
+                        Divider()
+
+                        MarkdownPreview(source: session.draft)
+                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .padding(16)
+                    }
+                    .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     MarkdownPreview(source: note.contents)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .padding(16)
                 }
             } else {
@@ -66,17 +84,7 @@ struct MarkdownNotesView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 480, minHeight: 320)
-        .confirmationDialog(
-            L("Delete this note?"),
-            isPresented: $confirmsDelete,
-            titleVisibility: .visible
-        ) {
-            Button(L("Delete Note"), role: .destructive) { _ = session.deleteSelected() }
-            Button(L("Cancel"), role: .cancel) {}
-        } message: {
-            Text(L("This permanently deletes the note and its recovery draft."))
-        }
+        .frame(minWidth: 0, minHeight: 320)
         .background {
             MarkdownNoteKeyMonitor(onKeyEvent: handleKeyEvent)
                 .frame(width: 1, height: 1)
@@ -112,6 +120,13 @@ struct MarkdownNotesView: View {
             }
             .help(L("Browse notes (⌘P)"))
 
+            if let onActions {
+                Button(action: onActions) {
+                    Label(L("Actions"), systemImage: "command")
+                }
+                .help(L("Show note actions (⌘K)"))
+            }
+
             if selectedNote != nil {
                 Button(session.isEditing ? L("Preview") : L("Edit")) {
                     _ = session.toggleEditing()
@@ -121,7 +136,7 @@ struct MarkdownNotesView: View {
 
                 Menu {
                     Button(L("Export Markdown…   ⇧⌘E"), action: exportSelected)
-                    Button(L("Delete Note…   ⌘⌫"), role: .destructive, action: requestDelete)
+                    Button(L("Delete Note   ⌘⌫"), role: .destructive, action: requestDelete)
                 } label: {
                     Label(L("More"), systemImage: "ellipsis")
                 }
@@ -168,7 +183,6 @@ struct MarkdownNotesView: View {
     }
 
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        guard !confirmsDelete else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let hasCommand = flags.contains(.command)
         guard !flags.contains(.option), !flags.contains(.control) else { return false }
@@ -220,6 +234,9 @@ struct MarkdownNotesView: View {
         case "g":
             guard session.isEditing else { return false }
             _ = session.requestFind(.next)
+        case "k":
+            guard let onActions else { return false }
+            onActions()
         case "w": _ = session.close()
         default:
             if event.keyCode == 36 || event.keyCode == 76 {
@@ -240,11 +257,13 @@ struct MarkdownNotesView: View {
     }
 
     private func requestDelete() {
+        if let onDelete { onDelete(); return }
         guard session.prepareDelete() else { return }
-        confirmsDelete = true
+        _ = session.deleteSelected()
     }
 
     private func exportSelected() {
+        if let onExport { onExport(); return }
         guard session.saveAndPreview(), let note = session.selectedNote else { return }
         let panel = NSSavePanel()
         panel.title = L("Export Markdown Note")

@@ -8,6 +8,10 @@ struct ActionMenuItem: Identifiable {
     var symbol: String {
         switch action {
         case .clearCalculationHistory: "trash"
+        case .editNote: "square.and.pencil"
+        case .copyMarkdown: "doc.on.doc"
+        case .exportNote: "square.and.arrow.up"
+        case .deleteNote: "trash"
         case .copy: "doc.on.doc"
         case .pastePlainText: "doc.plaintext"
         case .quitApplication: "xmark.circle"
@@ -90,6 +94,11 @@ final class ActionMenuController: NSObject, ObservableObject, NSWindowDelegate {
     func handleKey(_ event: NSEvent) -> Bool {
         guard isVisible else { return false }
         if LauncherKeyboard.isActionShortcut(event) { close(); return true }
+        if LauncherKeyboard.isNoteDeleteShortcut(event),
+           let index = items.firstIndex(where: { $0.action == .deleteNote }) {
+            choose(index)
+            return true
+        }
         switch event.keyCode {
         case 53: close()
         case 125: select(min(selectedIndex + 1, items.count - 1))
@@ -109,6 +118,11 @@ final class ActionMenuController: NSObject, ObservableObject, NSWindowDelegate {
 
 /// Ignore hardware-specific flags, Caps Lock, and Function when recognizing a command chord.
 enum LauncherKeyboard {
+    static func isNoteDeleteShortcut(_ event: NSEvent) -> Bool {
+        event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command
+            && [51, 117].contains(event.keyCode)
+    }
+
     static func isActionShortcut(_ event: NSEvent) -> Bool {
         event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command
             && event.charactersIgnoringModifiers?.lowercased() == "k"
@@ -132,11 +146,14 @@ private struct ActionMenuView: View {
             Divider().padding(.horizontal, 8)
             VStack(spacing: 2) {
                 ForEach(Array(controller.items.enumerated()), id: \.element.id) { index, item in
-                    Button(role: item.action == .removeClipboardItem ? .destructive : nil) { controller.choose(index) } label: {
+                    Button(role: [.removeClipboardItem, .deleteNote].contains(item.action) ? .destructive : nil) { controller.choose(index) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.symbol).frame(width: 18).foregroundStyle(.secondary)
                             Text(item.title).font(.system(size: 13, weight: controller.selectedIndex == index ? .medium : .regular))
                             Spacer(minLength: 4)
+                            if item.action == .deleteNote {
+                                Text("⌘⌫").font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
                             if controller.selectedIndex == index { Text(L("↵")).font(.system(size: 12)).foregroundStyle(.secondary) }
                         }.padding(.horizontal, 10).frame(height: 38)
                             .contentShape(Rectangle())

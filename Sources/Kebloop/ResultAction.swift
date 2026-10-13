@@ -2,6 +2,7 @@ import Foundation
 
 /// Stable identifiers shared by launcher menus and future command integrations.
 enum ResultAction: String, CaseIterable {
+    case editNote, copyMarkdown, exportNote, deleteNote
     case open, clearCalculationHistory, copy, pastePlainText, quitApplication, forceQuitApplication, restartApplication, hideApplication, reveal, copyPath, openWith, editQuicklink, pin, unpin, runWithInput, removeClipboardItem
     enum Kind { case application, file, quicklink, command, appleShortcut, clipboard, other }
     static func available(kind: Kind, pinned: Bool = false, running: Bool = false, hasPlainText: Bool = true) -> [ResultAction] {
@@ -22,6 +23,10 @@ enum ResultAction: String, CaseIterable {
     var title: String {
         switch self {
         case .clearCalculationHistory: return L("Clear Calculator History…")
+        case .editNote: return L("Edit Note")
+        case .copyMarkdown: return L("Copy Markdown")
+        case .exportNote: return L("Export Markdown…")
+        case .deleteNote: return L("Delete Note")
         case .copy: return L("Copy")
         case .pastePlainText: return L("Paste as Plain Text")
         case .quitApplication: return L("Quit Application")

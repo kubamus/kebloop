@@ -340,12 +340,14 @@
 "Could not start the background operation." = "Could not start the background operation.";
 "Create a note with Ctrl+N." = "Create a note with Ctrl+N.";
 "Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+P notes" = "Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+P notes";
+"Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+Shift+N notes" = "Ctrl+Enter save · Ctrl+F find · Esc preview · Ctrl+N new · Ctrl+Shift+N notes";
 "Delete Note…   Ctrl+Delete" = "Delete Note…   Ctrl+Delete";
 "Discard   Ctrl+Shift+D" = "Discard   Ctrl+Shift+D";
 "Draft saved for recovery." = "Draft saved for recovery.";
 "Enabled. Review the source and preferences before running." = "Enabled. Review the source and preferences before running.";
 "Enter a word above and press Return. Definitions use local StarDict dictionaries (sdcv)." = "Enter a word above and press Return. Definitions use local StarDict dictionaries (sdcv).";
 "Enter edit · Ctrl+N new · Ctrl+P notes · Ctrl+F find · Esc close" = "Enter edit · Ctrl+N new · Ctrl+P notes · Ctrl+F find · Esc close";
+"Enter edit · Ctrl+N new · Ctrl+Shift+N notes · Ctrl+K options · Ctrl+Backspace delete · Esc close" = "Enter edit · Ctrl+N new · Ctrl+Shift+N notes · Ctrl+K options · Ctrl+Backspace delete · Esc close";
 "Enter restores a layout. Tab to name and save the current layout." = "Enter restores a layout. Tab to name and save the current layout.";
 "Enter: next match · Esc: close find" = "Enter: next match · Esc: close find";
 "Export Markdown…   Ctrl+Shift+E" = "Export Markdown…   Ctrl+Shift+E";
@@ -362,11 +364,13 @@
 "Loading…" = "Loading…";
 "Lowercase" = "Lowercase";
 "Markdown note exported." = "Markdown note exported.";
+"Markdown copied to clipboard." = "Markdown copied to clipboard.";
 "Model selected. Ctrl+Return starts recording." = "Model selected. Ctrl+Return starts recording.";
 "No Raycast JavaScript commands have been imported." = "No Raycast JavaScript commands have been imported.";
 "No matches found." = "No matches found.";
 "No previous application is available." = "No previous application is available.";
 "No upcoming meeting link" = "No upcoming meeting link";
+"Options" = "Options";
 "Preference saved." = "Preference saved.";
 "Preview JavaScript Command" = "Preview JavaScript Command";
 "Preview supported Raycast exports and review commands before importing. All imported commands start disabled." = "Preview supported Raycast exports and review commands before importing. All imported commands start disabled.";
@@ -406,6 +410,7 @@
 "Transform" = "Transform";
 "Trim Whitespace" = "Trim Whitespace";
 "Type to filter · Up/Down select · Enter open · Esc return" = "Type to filter · Up/Down select · Enter open · Esc return";
+"Type to filter · Up/Down select · Enter edit · Ctrl+K note options · Esc preview" = "Type to filter · Up/Down select · Enter edit · Ctrl+K note options · Esc preview";
 "Upcoming events · Return joins the next available meeting" = "Upcoming events · Return joins the next available meeting";
 "Uppercase" = "Uppercase";
 "Window integration is unavailable on this desktop." = "Window integration is unavailable on this desktop.";
