@@ -1,0 +1,7 @@
+{
+  "uuid": "kebloop@kebloop.app",
+  "name": "Kebloop Desktop Integration",
+  "description": "Opt-in window management and clipboard history for Kebloop on GNOME Wayland.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "version": 1
+}

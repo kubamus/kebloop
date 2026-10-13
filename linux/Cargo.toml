@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/kebloop-core", "crates/kebloop-services", "crates/kebloop-platform", "crates/kebloop"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+publish = false
+license = "MIT"
+
+[workspace.dependencies]
+kebloop-core = { path = "crates/kebloop-core" }
+kebloop-services = { path = "crates/kebloop-services" }
+kebloop-platform = { path = "crates/kebloop-platform" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

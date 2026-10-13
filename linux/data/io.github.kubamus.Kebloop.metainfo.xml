@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.kubamus.Kebloop</id>
+  <name>Kebloop</name>
+  <summary>Keyboard-driven launcher for the things you do every day</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.kubamus">
+    <name>kubamus</name>
+  </developer>
+  <description>
+    <p>
+      Open apps, find files, run calculations, and reach your clipboard history, quicklinks,
+      snippets and emoji from one search field.
+    </p>
+    <p>
+      Kebloop runs locally without an account. Bind <em>kebloop toggle</em> to a key in your
+      compositor to open or hide the launcher.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.kubamus.Kebloop.desktop</launchable>
+  <url type="homepage">https://github.com/kubamus/kebloop</url>
+  <url type="bugtracker">https://github.com/kubamus/kebloop/issues</url>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>launcher</keyword>
+    <keyword>search</keyword>
+    <keyword>calculator</keyword>
+    <keyword>clipboard</keyword>
+    <keyword>emoji</keyword>
+  </keywords>
+  <provides>
+    <binary>kebloop</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-13" />
+  </releases>
+</component>

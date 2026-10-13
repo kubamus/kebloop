@@ -66,6 +66,10 @@ KEBLOOP_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/insta
 
 These are local development builds, not notarized distribution releases. A stable development signature helps macOS retain Siri automation permissions across rebuilds; ad-hoc builds may require granting them again.
 
+## Linux
+
+A native Linux port (Rust, GTK4, libadwaita, Wayland-first) lives in [`linux/`](linux/README.md) on the `linux-rust` branch. It covers app, file, calculator, clipboard, quicklink, snippet, and emoji search, and is bound to a compositor key with `kebloop toggle`. See the [Linux guide](linux/README.md) for requirements, installation, and shortcut setup.
+
 ## Getting started
 
 | Action | Shortcut |
@@ -106,3 +110,7 @@ swift test -c release
 Milestones 3–4 add clipboard retention/privacy/pins and image/rich-text history, reusable snippets, unit/date calculations, English/Polish UI resources, reviewed local script commands, and a versioned subprocess extension API. See [usage](docs/usage.md), [conversion syntax](docs/conversions.md), [automation examples/API](docs/automation.md), and [validation status](docs/roadmap.md).
 
 See the [feature-by-feature verification report](docs/feature-verification.md) for test coverage and remaining native UI checks.
+
+## License
+
+Kebloop is released under the [MIT License](LICENSE). The bundled Unicode emoji data is covered by the [Unicode License](Sources/KebloopCore/Resources/unicode-license.txt).

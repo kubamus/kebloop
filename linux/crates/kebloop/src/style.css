@@ -1,0 +1,282 @@
+/* Kebloop launcher styling. Colours come from libadwaita named colours so the panel follows
+   the light/dark style. Size-dependent values live in the dynamic sheet (style.rs). */
+
+window.kb-window,
+window.kb-window.background {
+  background: transparent;
+  box-shadow: none;
+  min-height: 0;
+  min-width: 0;
+}
+
+.kb-panel {
+  background-color: alpha(@window_bg_color, 0.90);
+  color: @window_fg_color;
+  border-radius: 18px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+}
+
+.kb-panel.kb-opaque {
+  background-color: @window_bg_color;
+}
+
+.kb-panel.kb-contrast {
+  border-color: @window_fg_color;
+}
+
+.kb-header {
+  padding: 0 16px;
+}
+
+.kb-header image.kb-search-icon,
+.kb-header button.kb-back {
+  opacity: 0.65;
+  margin-right: 10px;
+}
+
+.kb-header button.kb-back {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin-left: -4px;
+  margin-right: 6px;
+}
+
+text.kb-input,
+.kb-input {
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  min-height: 0;
+  padding: 0;
+}
+
+.kb-title-label {
+  font-weight: 600;
+}
+
+.kb-separator {
+  background-color: alpha(@window_fg_color, 0.10);
+  min-height: 1px;
+}
+
+.kb-category {
+  padding: 5px 16px 3px 16px;
+}
+
+.kb-category label.kb-category-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+}
+
+.kb-category button {
+  min-height: 0;
+  min-width: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: none;
+  box-shadow: none;
+  opacity: 0.75;
+  border-radius: 6px;
+}
+
+.kb-category button:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+  opacity: 1;
+}
+
+.kb-results {
+  background: none;
+  padding: 0 6px 6px 6px;
+}
+
+.kb-results > row.kb-row,
+row.kb-row {
+  background: none;
+  border-radius: 10px;
+  padding: 0 10px;
+  margin: 1px 0;
+  box-shadow: none;
+}
+
+row.kb-row:hover {
+  background-color: alpha(@window_fg_color, 0.06);
+}
+
+row.kb-row.kb-selected {
+  background-color: alpha(@accent_bg_color, 0.22);
+}
+
+.kb-panel.kb-contrast row.kb-row.kb-selected {
+  background-color: alpha(@accent_bg_color, 0.45);
+  outline: 2px solid @accent_bg_color;
+}
+
+row.kb-row .kb-title {
+  font-weight: 500;
+}
+
+row.kb-row .kb-subtitle {
+  opacity: 0.65;
+}
+
+row.kb-row .kb-hint {
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+row.kb-row .kb-pin {
+  opacity: 0.6;
+}
+
+row.kb-row button.kb-row-button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  opacity: 0.6;
+  background: none;
+  box-shadow: none;
+}
+
+row.kb-row button.kb-row-button:hover {
+  opacity: 1;
+}
+
+.kb-empty,
+.kb-message {
+  opacity: 0.7;
+  padding: 14px 16px;
+}
+
+.kb-message {
+  color: @error_color;
+  opacity: 1;
+  font-size: 12px;
+  padding: 8px 16px 10px 16px;
+}
+
+.kb-thumbnail {
+  border-radius: 6px;
+}
+
+/* Emoji grid */
+.kb-emoji-view gridview {
+  background: none;
+  padding: 0 6px;
+}
+
+.kb-emoji-view gridview > child {
+  border-radius: 8px;
+  padding: 0;
+  margin: 2px;
+}
+
+.kb-emoji-view gridview > child:selected,
+.kb-emoji-view gridview > child.kb-selected {
+  background-color: alpha(@accent_bg_color, 0.30);
+}
+
+.kb-emoji-view label.kb-emoji {
+  font-size: 24px;
+  padding: 4px 0;
+}
+
+.kb-emoji-view .kb-chips {
+  padding: 4px 12px;
+}
+
+.kb-emoji-view .kb-chips button {
+  min-height: 0;
+  padding: 2px 10px;
+  font-size: 11px;
+  border-radius: 99px;
+  background: none;
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.kb-emoji-view .kb-chips button:checked {
+  background-color: alpha(@accent_bg_color, 0.25);
+  opacity: 1;
+  font-weight: 600;
+}
+
+.kb-emoji-view .kb-emoji-hint {
+  opacity: 0.65;
+  font-size: 12px;
+}
+
+.kb-emoji-view .kb-emoji-name {
+  font-size: 12px;
+  opacity: 0.7;
+  padding: 6px 16px 8px 16px;
+}
+
+.kb-emoji-view .kb-section {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.5;
+  padding: 6px 16px 0 16px;
+}
+
+/* Snippet form and preview, extension detail */
+.kb-page {
+  padding: 12px 16px 14px 16px;
+}
+
+.kb-page .kb-page-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.kb-page .kb-page-subtitle {
+  opacity: 0.65;
+}
+
+.kb-page textview.kb-preview {
+  background-color: alpha(@window_fg_color, 0.06);
+  border-radius: 10px;
+  padding: 8px;
+  font-family: monospace;
+}
+
+.kb-page .kb-detail {
+  background-color: alpha(@window_fg_color, 0.05);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+/* Action menu */
+popover.kb-actions > contents {
+  padding: 6px;
+  border-radius: 14px;
+}
+
+popover.kb-actions .kb-actions-title {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.55;
+  padding: 4px 8px 6px 8px;
+}
+
+popover.kb-actions row.kb-action {
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 28px;
+}
+
+popover.kb-actions row.kb-action.kb-selected {
+  background-color: alpha(@accent_bg_color, 0.28);
+}
+
+popover.kb-actions row.kb-action:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+
+/* Script output window */
+.kb-output {
+  font-family: monospace;
+}

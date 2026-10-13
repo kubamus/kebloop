@@ -1,0 +1,31 @@
+[package]
+name = "kebloop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Kebloop launcher for Linux: GTK4 + libadwaita + layer-shell user interface"
+
+[[bin]]
+name = "kebloop"
+path = "src/main.rs"
+
+[dependencies]
+kebloop-core.workspace = true
+kebloop-services.workspace = true
+kebloop-platform.workspace = true
+adw = { version = "0.9", package = "libadwaita", features = ["v1_6"] }
+gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
+gtk4-layer-shell = "0.8"
+gio-unix = "0.22"
+async-signal = "0.2"
+futures-lite = "2"
+anyhow = "1"
+async-channel = "2"
+clap = { version = "4", features = ["derive"] }
+jiff = "0.2"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

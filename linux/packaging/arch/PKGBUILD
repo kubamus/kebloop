@@ -1,0 +1,52 @@
+# Maintainer: kubamus
+pkgname=kebloop-git
+pkgver=r0.0000000
+pkgrel=1
+pkgdesc='Keyboard-driven launcher for apps, files, calculator, clipboard and emoji (GTK4, Wayland)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/kubamus/kebloop'
+license=('MIT' 'CC-BY-SA-3.0')
+depends=('gtk4' 'libadwaita' 'gtk4-layer-shell' 'glibc' 'gcc-libs')
+makedepends=('cargo' 'git')
+optdepends=('wtype: paste snippets on wlroots compositors'
+            'ydotool: paste snippets on other compositors'
+            'at-spi2-core: automatic snippet expansion in accessible text fields')
+provides=('kebloop')
+conflicts=('kebloop')
+options=('!lto')
+source=("$pkgname::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$pkgname/linux"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname/linux"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --release --frozen
+}
+
+check() {
+  cd "$pkgname/linux"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo test --workspace --frozen
+}
+
+package() {
+  cd "$pkgname/linux"
+  DESTDIR="$pkgdir" ./scripts/install.sh --prefix /usr --no-build
+  install -Dm644 ../LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # The emoji data is covered by the Unicode License V3 (see docs/unicode-emoji-attribution.md).
+  install -Dm644 ../Sources/KebloopCore/Resources/unicode-license.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/unicode-license.txt"
+}

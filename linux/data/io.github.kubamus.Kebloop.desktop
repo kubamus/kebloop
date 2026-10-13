@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Kebloop
+GenericName=Launcher
+Comment=Keyboard-driven launcher for apps, files, calculations, clipboard and emoji
+Exec=kebloop
+Icon=io.github.kubamus.Kebloop
+Terminal=false
+StartupNotify=false
+Categories=Utility;
+Keywords=launcher;search;calculator;clipboard;emoji;quicklinks;snippets;
+Actions=Toggle;Settings;
+
+[Desktop Action Toggle]
+Name=Toggle Launcher
+Exec=kebloop toggle
+
+[Desktop Action Settings]
+Name=Settings
+Exec=kebloop settings

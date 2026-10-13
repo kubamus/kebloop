@@ -1,0 +1,18 @@
+[package]
+name = "kebloop-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Pure Kebloop engines: calculator, unit, currency, date and time-zone conversion, search ranking, emoji catalog, AI prompt URLs"
+
+[dependencies]
+jiff = "0.2"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+# Keep the time-zone tests independent of the host's tzdata installation.
+jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
