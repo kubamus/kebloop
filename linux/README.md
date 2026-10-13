@@ -120,3 +120,20 @@ Same as the macOS app. Core features run locally. The one exception is currency 
 ## License
 
 MIT, see [LICENSE](../LICENSE).
+
+## Workflow commands
+
+The launcher, tray, CLI (`kebloop command <id>`), and configurable shortcuts expose the new workflows. Linux uses **Ctrl** for the note shortcuts corresponding to macOS **⌘**.
+
+| Command id | Linux behavior |
+| --- | --- |
+| `newNote`, `notes` | A reusable floating Markdown window. New notes are blank and focus the editor; existing notes open in preview. Return edits, Escape saves/returns to preview, Ctrl+W saves/closes, Ctrl+N creates, Ctrl+P browses notes, Ctrl+F finds, Ctrl+G/Shift+Ctrl+G selects matches, Ctrl+Z/Shift+Ctrl+Z undoes/redoes. Ctrl+Shift+P returns to the launcher. `notes query` opens a filtered browser. |
+| `dictionary` | Inline local dictionary lookup with `sdcv` and installed StarDict dictionaries. Type a word and press Return; `define word` works from root search. No network lookup. |
+| `dictation` | Inline on-device recognition with `arecord` (alsa-utils), `whisper-cli` (whisper.cpp), and a user-selected local model. Ctrl+Return starts/stops recording; Cancel/Escape discards recording. Preview and copy the transcript explicitly, or use Insert / Ctrl+Shift+Return to paste through the existing guarded previous-window flow. |
+| `calendar`, `joinNextMeeting` | Select local `.ics` files explicitly. Upcoming events and recognized HTTPS meeting links are shown; Return joins the next meeting explicitly. Refresh rereads the files. Daily/weekly recurrence, interval/count/until, weekday selection, exclusions, and time zones are supported. Other recurrence rules and recurrence exceptions require expanded exports. Account synchronization is pending. |
+| `windowSearch`, `menuSearch` | Search windows through the compositor, or the previous app's enabled AT-SPI menu actions. Type, navigate with arrows, and press Return. Apps must expose accessible menu actions. |
+| `selectedText` | Read the previous focused app's selection through AT-SPI, use offline case/whitespace actions or explicitly select local Ollama/OpenAI/Claude, preview the result, then copy or replace. Replacement rechecks the exact field, focus, range, and original text. Password fields are excluded. API keys stay in the current view. |
+| `windowLayouts` | Save named display-relative layouts and restore matched windows, with missing windows and partial failures reported. Exact positioning depends on the compositor; niri cannot restore arbitrary geometry. Workspace/tiling topology is separate work. |
+| `raycastImport`, `raycastExtensions` | Selectively import JSON snippets/quicklinks, review disabled Script Commands, and review standalone no-view JavaScript commands using the supported `@raycast/api` subset. SDK commands must be enabled before execution. Preferences are plain text; do not store secrets. Requires a chosen Node executable. See [compatibility scope](../docs/raycast.md). |
+
+Notes and their recovery drafts live under `$XDG_DATA_HOME/kebloop/notes/`. Calendar selection, local model selection, saved layouts, and reviewed SDK commands are local data, separate from portable profiles. Dictation audio is temporary and private; no audio is uploaded.

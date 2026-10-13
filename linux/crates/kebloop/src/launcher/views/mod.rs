@@ -3,5 +3,12 @@
 pub mod clipboard;
 pub mod emoji;
 pub mod extension;
+pub mod notes;
 pub mod script;
 pub mod snippets;
+
+pub mod utilities;
+
+pub mod desktop_workflows;
+
+pub mod raycast;

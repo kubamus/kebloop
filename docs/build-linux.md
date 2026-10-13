@@ -71,6 +71,10 @@ cd linux
 cargo test -p kebloop-platform private_x11 -- --ignored --test-threads=1
 cargo test -p kebloop-platform compositor::x11::tests::live_controls -- --ignored --test-threads=1
 tests/gtk_snippets.py target/release/kebloop
+cargo test -p kebloop-platform private_selected_text -- --ignored
+xvfb-run -a dbus-run-session sh -c 'openbox >/tmp/kebloop-openbox.log 2>&1 & python3 tests/gtk_workflows.py target/release/kebloop'
 ```
 
-The GTK smoke test also needs private Xvfb/D-Bus, openbox, python3-gi, xdotool, and xclip. The workspace checks are local; this repository does not configure CI. Linux has been verified on Ubuntu 26.04 ARM64 with GNOME Shell 50.1, KWin 6.6.6, and Xvfb/Openbox. Other desktop versions and physical monitor or hardware configurations require their own testing.
+The GTK smoke test also needs private Xvfb/D-Bus, openbox, python3-gi, xdotool, and xclip. The workflow keyboard smoke additionally uses python3-pyatspi for accessible preview/utility checks. The workspace checks are local; this repository does not configure CI. Linux has been verified on Ubuntu 26.04 ARM64 with GNOME Shell 50.1, KWin 6.6.6, and Xvfb/Openbox. Other desktop versions and physical monitor or hardware configurations require their own testing.
+
+Dictionary and dictation dependencies are optional: install `sdcv` with a StarDict dictionary for definitions, and `alsa-utils`/`whisper.cpp` with a local model for on-device dictation. They are selected from keyboard-accessible launcher pages. Calendar commands read explicitly selected `.ics` files. See [the Linux workflow support matrix](../linux/README.md#workflow-commands).

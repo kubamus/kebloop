@@ -16,6 +16,8 @@ Open apps, find files, run calculations, and reach your clipboard, quicklinks, s
 - Quicklinks, reusable snippets, and a searchable emoji picker.
 - App controls, system actions, and window management, depending on your desktop.
 - AI handoff to ChatGPT or Claude, plus Siri on macOS.
+- macOS window/menu search, meeting commands, selected-text tools, Markdown notes, dictionary, and on-device dictation.
+- Raycast JSON export migration, script compatibility, and saved window layouts on macOS.
 
 Core features run locally without a Kebloop account. Currency conversions fetch and cache exchange rates; AI handoff sends your query to the provider you choose.
 

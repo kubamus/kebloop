@@ -7,6 +7,10 @@ use ksni::menu::{MenuItem, StandardItem};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayEvent {
     OpenLauncher,
+    NewNote,
+    Notes,
+    Dictionary,
+    Dictation,
     Settings,
     RefreshApps,
     Quit,
@@ -17,6 +21,10 @@ pub enum TrayEvent {
 pub struct TrayLabels {
     pub title: String,
     pub open_launcher: String,
+    pub new_note: String,
+    pub notes: String,
+    pub dictionary: String,
+    pub dictation: String,
     pub settings: String,
     pub refresh_apps: String,
     pub quit: String,
@@ -27,6 +35,10 @@ impl Default for TrayLabels {
         Self {
             title: "Kebloop".into(),
             open_launcher: "Open Launcher".into(),
+            new_note: "New Note".into(),
+            notes: "Notes".into(),
+            dictionary: "Dictionary".into(),
+            dictation: "Dictation".into(),
             settings: "Settings".into(),
             refresh_apps: "Refresh Apps".into(),
             quit: "Quit".into(),
@@ -107,6 +119,10 @@ impl ksni::Tray for KebloopTray {
         let l = &self.config.labels;
         vec![
             self.item(&l.open_launcher, "system-search", TrayEvent::OpenLauncher),
+            self.item(&l.new_note, "list-add", TrayEvent::NewNote),
+            self.item(&l.notes, "text-x-generic", TrayEvent::Notes),
+            self.item(&l.dictionary, "help-browser", TrayEvent::Dictionary),
+            self.item(&l.dictation, "audio-input-microphone", TrayEvent::Dictation),
             self.item(&l.settings, "preferences-system", TrayEvent::Settings),
             self.item(&l.refresh_apps, "view-refresh", TrayEvent::RefreshApps),
             MenuItem::Separator,
@@ -171,15 +187,15 @@ mod tests {
     use ksni::Tray;
 
     #[test]
-    fn menu_has_four_actions_and_a_separator() {
+    fn menu_has_keyboard_utility_actions_and_a_separator() {
         let (tx, rx) = async_channel::unbounded();
         let tray = KebloopTray {
             config: TrayConfig::default(),
             events: tx,
         };
         let menu = tray.menu();
-        assert_eq!(menu.len(), 5);
-        assert!(matches!(menu[3], MenuItem::Separator));
+        assert_eq!(menu.len(), 9);
+        assert!(matches!(menu[7], MenuItem::Separator));
         let labels: Vec<String> = menu
             .iter()
             .filter_map(|m| match m {
@@ -189,7 +205,16 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            ["Open Launcher", "Settings", "Refresh Apps", "Quit"]
+            [
+                "Open Launcher",
+                "New Note",
+                "Notes",
+                "Dictionary",
+                "Dictation",
+                "Settings",
+                "Refresh Apps",
+                "Quit"
+            ]
         );
 
         // Activating each item sends the matching event.
@@ -205,6 +230,10 @@ mod tests {
             seen,
             [
                 TrayEvent::OpenLauncher,
+                TrayEvent::NewNote,
+                TrayEvent::Notes,
+                TrayEvent::Dictionary,
+                TrayEvent::Dictation,
                 TrayEvent::Settings,
                 TrayEvent::RefreshApps,
                 TrayEvent::Quit

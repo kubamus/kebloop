@@ -162,6 +162,19 @@ struct HelpView: View {
 
     private func description(for command: LauncherCommand) -> String {
         switch command {
+        case .newNote: L("Create a Markdown note immediately and start editing. The launcher also supports ⌘N.")
+        case .windowSearch: L("Search open window titles and bring a document forward. Requires Accessibility permission.")
+        case .menuSearch: L("Search the previous application’s menu and execute an enabled command. Requires Accessibility permission.")
+        case .calendar: L("Choose local calendars explicitly and browse upcoming meetings.")
+        case .joinNextMeeting: L("Open the next eligible meeting link after an explicit action.")
+        case .selectedText: L("Read selected text, choose processing, and preview before copying or replacing.")
+        case .notes: L("Create, search, and autosave local Markdown notes in a floating window.")
+        case .dictionary: L("Look up a word using the macOS Dictionary application.")
+        case .dictation: L("Record speech on device with consent and preview before inserting.")
+        case .raycastImport: L("Preview supported Raycast settings and select categories to import.")
+        case .raycastExtensions: L("Review and run the supported subset of Raycast commands.")
+        case .windowLayouts: L("Save and restore arrangements with reports for missing windows and displays.")
+
         case .snippets: L("Fill placeholders, preview, and copy reusable text.")
         case .scripts: L("Run reviewed local scripts with bounded output and cancellation.")
         case .extensions: L("Browse results and actions from enabled local extensions.")
@@ -184,6 +197,8 @@ struct HelpView: View {
 
     private func example(for command: LauncherCommand) -> String {
         switch command {
+        case .newNote, .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .notes, .dictionary, .dictation, .raycastImport, .raycastExtensions, .windowLayouts: command.aliases.first ?? command.rawValue
+
         case .snippets: L("snippets")
         case .scripts: L("scripts")
         case .extensions: L("extensions")

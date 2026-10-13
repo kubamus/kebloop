@@ -14,4 +14,8 @@
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>Kebloop uses macOS automation for shutdown, restart, log out, sleep, mute, and appearance commands.</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Kebloop reads calendars you select to show your next meeting and its join link.</string>
+<key>NSCalendarsUsageDescription</key><string>Kebloop reads calendars you select to show your next meeting and its join link.</string>
+<key>NSMicrophoneUsageDescription</key><string>Kebloop uses the microphone only while you explicitly record on-device dictation.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>Kebloop transcribes dictation on this Mac and does not send audio over the network.</string>
 </dict></plist>

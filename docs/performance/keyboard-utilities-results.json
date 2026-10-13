@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-13",
+  "profile": {
+    "application_count": 117,
+    "first_show_ms": 92.70525000010821,
+    "idle_cpu_percent": 0.21776000000000018,
+    "index_ready_ms": 412.1847500000513,
+    "navigation_p50_ms": 0.07466666738764616,
+    "navigation_p95_ms": 0.10745833333203336,
+    "peak_rss_mib": 132.859375,
+    "query_p50_ms": 5.119499999636901,
+    "query_p95_ms": 15.276333333531511,
+    "workload_cpu_seconds": 1.50597,
+    "workload_wall_seconds": 1.686844583333368
+  }
+}

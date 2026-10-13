@@ -415,6 +415,55 @@ impl Launcher {
     pub(super) fn handle_command(&self, command: LauncherCommand, result_id: &str) {
         let Some(ctx) = self.ctx() else { return };
         match command {
+            LauncherCommand::WindowSearch
+            | LauncherCommand::MenuSearch
+            | LauncherCommand::WindowLayouts
+            | LauncherCommand::SelectedText => {
+                let previous = self.inner.previous.borrow().clone();
+                let kind = match command {
+                    LauncherCommand::WindowSearch => {
+                        super::views::desktop_workflows::WorkflowKind::Windows
+                    }
+                    LauncherCommand::MenuSearch => {
+                        super::views::desktop_workflows::WorkflowKind::Menus
+                    }
+                    LauncherCommand::WindowLayouts => {
+                        super::views::desktop_workflows::WorkflowKind::Layouts
+                    }
+                    _ => super::views::desktop_workflows::WorkflowKind::SelectedText,
+                };
+                self.hide();
+                super::views::desktop_workflows::open_workflow(&ctx, kind, previous);
+            }
+            LauncherCommand::RaycastImport | LauncherCommand::RaycastExtensions => {
+                self.set_mode(Mode::Raycast)
+            }
+            LauncherCommand::Dictionary => self.set_mode(Mode::Utility(
+                super::views::utilities::UtilityKind::Dictionary,
+            )),
+            LauncherCommand::Dictation => self.set_mode(Mode::Utility(
+                super::views::utilities::UtilityKind::Dictation,
+            )),
+            LauncherCommand::Calendar => self.set_mode(Mode::Utility(
+                super::views::utilities::UtilityKind::Calendar,
+            )),
+            LauncherCommand::JoinNextMeeting => self.set_mode(Mode::Utility(
+                super::views::utilities::UtilityKind::NextMeeting,
+            )),
+            LauncherCommand::Notes | LauncherCommand::NewNote => {
+                self.hide();
+                let launcher = self.clone();
+                if let Err(error) = super::views::notes::open_notes(
+                    &ctx.app,
+                    &ctx,
+                    None,
+                    command == LauncherCommand::NewNote,
+                    move || launcher.show(),
+                ) {
+                    self.show();
+                    self.fail(error.to_string());
+                }
+            }
             LauncherCommand::Snippets => self.set_mode(Mode::Snippets),
             LauncherCommand::Scripts => self.set_mode(Mode::Scripts),
             LauncherCommand::Extensions => self.set_mode(Mode::Extensions),

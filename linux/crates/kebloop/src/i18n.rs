@@ -87,6 +87,22 @@ mod tests {
             ("launcher/exec", include_str!("launcher/exec.rs")),
             ("launcher/flows", include_str!("launcher/flows.rs")),
             ("services/shortcuts", include_str!("services/shortcuts.rs")),
+            (
+                "launcher/views/notes",
+                include_str!("launcher/views/notes.rs"),
+            ),
+            (
+                "launcher/views/raycast",
+                include_str!("launcher/views/raycast.rs"),
+            ),
+            (
+                "launcher/views/desktop_workflows",
+                include_str!("launcher/views/desktop_workflows.rs"),
+            ),
+            (
+                "launcher/views/utilities",
+                include_str!("launcher/views/utilities.rs"),
+            ),
             ("launcher/views/mod", include_str!("launcher/views/mod.rs")),
             (
                 "launcher/views/clipboard",

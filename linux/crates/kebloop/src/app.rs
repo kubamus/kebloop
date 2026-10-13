@@ -252,6 +252,9 @@ fn shut_down_services(ctx: &AppContext) {
 
 /// Cancel background runs, stop their subprocesses, save and leave the main loop.
 pub fn quit(ctx: &AppContext) {
+    if !crate::launcher::views::notes::save_before_quit() {
+        return;
+    }
     shut_down_services(ctx);
     ctx.app.quit();
 }

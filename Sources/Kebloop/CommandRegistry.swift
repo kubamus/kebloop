@@ -4,12 +4,25 @@ import Combine
 
 // Raw values are persisted identifiers; keep them stable across releases.
 enum LauncherCommand: String, CaseIterable, Identifiable {
+    case newNote, windowSearch, menuSearch, calendar, joinNextMeeting, selectedText, notes, dictionary, dictation, raycastImport, raycastExtensions, windowLayouts
     case lock, sleep, restart, logOut, toggleMute, toggleAppearance, leftHalf, rightHalf, maximizeWindow, centerWindow, restoreWindow, nextDisplay, calculationHistory
     case topHalf, bottomHalf, topLeftQuarter, topRightQuarter, bottomLeftQuarter, bottomRightQuarter, leftThird, centerThird, rightThird, leftTwoThirds, rightTwoThirds, previousDisplay
     case snippets, scripts, extensions, clipboard, quicklinks, emoji, settings, shutdown, browse, help, onboarding, profiles, webSearch, appleShortcuts
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .newNote: L("New Note")
+        case .windowSearch: L("Search Windows")
+        case .menuSearch: L("Search Menu Commands")
+        case .calendar: L("Calendar and Meetings")
+        case .joinNextMeeting: L("Join Next Meeting")
+        case .selectedText: L("Selected Text Actions")
+        case .notes: L("Floating Markdown Notes")
+        case .dictionary: L("Dictionary Lookup")
+        case .dictation: L("Dictation")
+        case .raycastImport: L("Import Raycast Export")
+        case .raycastExtensions: L("Raycast Compatible Commands")
+        case .windowLayouts: L("Saved Window Layouts")
         case .lock: L("Lock Screen")
         case .sleep: L("Sleep")
         case .restart: L("Restart…")
@@ -54,6 +67,18 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .newNote: "square.and.pencil"
+        case .windowSearch: "macwindow"
+        case .menuSearch: "menubar.rectangle"
+        case .calendar: "calendar"
+        case .joinNextMeeting: "video"
+        case .selectedText: "text.cursor"
+        case .notes: "note.text"
+        case .dictionary: "character.book.closed"
+        case .dictation: "mic"
+        case .raycastImport: "square.and.arrow.down"
+        case .raycastExtensions: "puzzlepiece.extension"
+        case .windowLayouts: "rectangle.3.group"
         case .lock: "lock"
         case .sleep: "moon.zzz"
         case .restart: "restart"
@@ -98,6 +123,18 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     }
     var aliases: [String] {
         switch self {
+        case .newNote: ["new note", "quick note", "nowa notatka"]
+        case .windowSearch: ["windows", "window search"]
+        case .menuSearch: ["menu search", "menu commands"]
+        case .calendar: ["calendar", "meetings"]
+        case .joinNextMeeting: ["join next meeting", "join meeting"]
+        case .selectedText: ["selected text", "rewrite", "translate", "summarize", "grammar"]
+        case .notes: ["notes", "markdown", "floating notes"]
+        case .dictionary: ["dictionary", "define", "lookup"]
+        case .dictation: ["dictation", "dictate"]
+        case .raycastImport: ["raycast import", "raycast migration"]
+        case .raycastExtensions: ["raycast extensions", "raycast commands"]
+        case .windowLayouts: ["window layouts", "save layout", "restore layout"]
         case .lock: ["lock screen", "lock", "zablokuj"]
         case .sleep: ["sleep", "uśpij"]
         case .restart: ["restart", "reboot", "uruchom ponownie"]

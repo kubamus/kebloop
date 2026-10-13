@@ -20,3 +20,5 @@ pub mod system_actions;
 pub mod text;
 pub mod tray;
 pub mod window_management;
+
+pub mod workflows;

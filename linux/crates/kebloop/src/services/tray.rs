@@ -14,6 +14,10 @@ pub fn init(ctx: &Rc<AppContext>) {
     let labels = TrayLabels {
         title: "Kebloop".into(),
         open_launcher: tr("Open Kebloop"),
+        new_note: tr("New Note"),
+        notes: tr("Notes"),
+        dictionary: tr("Dictionary Lookup"),
+        dictation: tr("Dictation"),
         settings: tr("Settings…"),
         refresh_apps: tr("Refresh Applications"),
         quit: tr("Quit Kebloop"),
@@ -53,6 +57,10 @@ pub fn init(ctx: &Rc<AppContext>) {
         while let Ok(event) = events.recv().await {
             let request = match event {
                 TrayEvent::OpenLauncher => Request::Show,
+                TrayEvent::NewNote => Request::Command("newNote".into()),
+                TrayEvent::Notes => Request::Command("notes".into()),
+                TrayEvent::Dictionary => Request::Command("dictionary".into()),
+                TrayEvent::Dictation => Request::Command("dictation".into()),
                 TrayEvent::Settings => Request::Settings(None),
                 TrayEvent::RefreshApps => {
                     super::apps::refresh(&ctx);

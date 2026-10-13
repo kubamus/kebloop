@@ -75,6 +75,15 @@ impl Mods {
     }
 }
 
+/// Quick note shortcuts, excluding AltGr and additional modifier combinations.
+pub fn note_command(key: Key, mods: Mods) -> Option<&'static str> {
+    match (key, mods) {
+        (Key::Char('n'), Mods::CTRL) => Some("newNote"),
+        (Key::Char('n'), Mods::CTRL_SHIFT) => Some("notes"),
+        _ => None,
+    }
+}
+
 /// What the visible view is, as far as keys are concerned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewKind {
@@ -481,5 +490,41 @@ mod tests {
         assert_eq!(decide(Key::Down, Mods::NONE, s), KeyAction::Propagate);
         assert_eq!(decide(Key::Return, Mods::NONE, s), KeyAction::Propagate);
         assert_eq!(decide(Key::Tab, Mods::NONE, s), KeyAction::Propagate);
+    }
+}
+
+#[cfg(test)]
+mod note_shortcut_tests {
+    use super::*;
+    #[test]
+    fn shortcuts_preserve_altgr_and_unmodified_typing() {
+        assert_eq!(note_command(Key::Char('n'), Mods::CTRL), Some("newNote"));
+        assert_eq!(
+            note_command(Key::Char('n'), Mods::CTRL_SHIFT),
+            Some("notes")
+        );
+        assert_eq!(note_command(Key::Char('n'), Mods::NONE), None);
+        assert_eq!(
+            note_command(
+                Key::Char('n'),
+                Mods {
+                    ctrl: true,
+                    alt: true,
+                    ..Mods::NONE
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            note_command(
+                Key::Char('n'),
+                Mods {
+                    ctrl: true,
+                    logo: true,
+                    ..Mods::NONE
+                }
+            ),
+            None
+        );
     }
 }

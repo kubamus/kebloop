@@ -39,6 +39,7 @@ use self::views::clipboard as clipboard_view;
 use self::views::emoji::EmojiView;
 use self::views::extension::ExtensionPage;
 use self::views::snippets::SnippetPage;
+use self::views::utilities::{UtilityKind, UtilityPage};
 use self::window::PanelWindow;
 use crate::context::{AppContext, Change};
 use crate::i18n::tr;
@@ -49,6 +50,8 @@ use crate::style::Metrics;
 pub enum Mode {
     /// Root search.
     Root,
+    Utility(UtilityKind),
+    Raycast,
     /// Clipboard history.
     Clipboard,
     /// Quicklinks.
@@ -81,13 +84,20 @@ impl Mode {
             Mode::Root => ViewKind::Root,
             Mode::Clipboard => ViewKind::Clipboard,
             Mode::Emoji => ViewKind::Emoji,
-            Mode::Snippet => ViewKind::Form,
+            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => ViewKind::Form,
             _ => ViewKind::List,
         }
     }
 
     fn title(&self) -> String {
         match self {
+            Mode::Raycast => tr("Raycast Compatibility"),
+            Mode::Utility(kind) => tr(match kind {
+                UtilityKind::Dictionary => "Dictionary Lookup",
+                UtilityKind::Dictation => "Dictation",
+                UtilityKind::Calendar => "Calendar Events",
+                UtilityKind::NextMeeting => "Join Next Meeting",
+            }),
             Mode::Root => tr("Results"),
             Mode::Clipboard => tr("Clipboard History"),
             Mode::Quicklinks => tr("Quicklinks"),
@@ -104,6 +114,9 @@ impl Mode {
 
     fn placeholder(&self) -> String {
         match self {
+            Mode::Raycast => tr("Tab through imports and reviewed commands"),
+            Mode::Utility(UtilityKind::Dictionary) => tr("Enter a word…"),
+            Mode::Utility(_) => tr("Return to activate · Esc back"),
             Mode::Root => tr("Search apps, links, or commands…"),
             Mode::Clipboard => tr("Search clipboard history…"),
             Mode::Quicklinks => tr("Search quicklinks…"),
@@ -121,6 +134,8 @@ impl Mode {
 
     fn page(&self) -> &'static str {
         match self {
+            Mode::Utility(_) => "utility",
+            Mode::Raycast => "raycast",
             Mode::Emoji => "emoji",
             Mode::Snippet => "snippet",
             Mode::Extension(_) => "extension",
@@ -182,6 +197,8 @@ struct Inner {
     emoji: EmojiView,
     snippet: SnippetPage,
     extension: ExtensionPage,
+    utility: UtilityPage,
+    raycast: views::raycast::RaycastPage,
     message: gtk::Label,
     actions: ActionMenu,
     state: RefCell<State>,
@@ -296,6 +313,8 @@ impl Launcher {
         let emoji = EmojiView::new();
         let snippet = SnippetPage::new();
         let extension = ExtensionPage::new();
+        let utility = UtilityPage::new(ctx);
+        let raycast = views::raycast::RaycastPage::new(ctx);
         let stack = gtk::Stack::builder()
             .hhomogeneous(true)
             .vhomogeneous(false)
@@ -305,6 +324,8 @@ impl Launcher {
         stack.add_named(emoji.widget(), Some("emoji"));
         stack.add_named(snippet.widget(), Some("snippet"));
         stack.add_named(extension.widget(), Some("extension"));
+        stack.add_named(utility.widget(), Some("utility"));
+        stack.add_named(raycast.widget(), Some("raycast"));
 
         let message = gtk::Label::builder()
             .xalign(0.0)
@@ -356,6 +377,8 @@ impl Launcher {
             emoji,
             snippet,
             extension,
+            utility,
+            raycast,
             message,
             actions,
             state: RefCell::new(State {
@@ -789,6 +812,7 @@ impl Launcher {
 
     /// Hide the launcher.
     pub fn hide(&self) {
+        self.inner.utility.cancel();
         let inner = &self.inner;
         inner.opening.set(false);
         inner.after_show.borrow_mut().clear();
@@ -845,6 +869,7 @@ impl Launcher {
 
     /// Switch to `mode` with an empty query.
     pub fn set_mode(&self, mode: Mode) {
+        self.inner.utility.cancel();
         let inner = &self.inner;
         if !matches!(mode, Mode::Extension(_)) {
             self.cancel_extension();
@@ -859,6 +884,8 @@ impl Launcher {
         self.set_query_silently("");
         self.show_page();
         match &mode {
+            Mode::Raycast => {}
+            Mode::Utility(kind) => inner.utility.begin(*kind),
             Mode::Emoji => {
                 let recents = self
                     .ctx()
@@ -876,7 +903,14 @@ impl Launcher {
             self.refresh(false);
         }
         self.inner.panel.fit_to_content();
-        self.focus_input();
+        if mode == Mode::Raycast {
+            self.inner
+                .raycast
+                .widget()
+                .child_focus(gtk::DirectionType::TabForward);
+        } else {
+            self.focus_input();
+        }
     }
 
     fn update_chrome(&self) {
@@ -894,7 +928,9 @@ impl Launcher {
         let is_root = mode == Mode::Root;
         inner.back.set_visible(!is_root);
         inner.search_icon.set_visible(is_root);
-        inner.input.set_visible(mode != Mode::Snippet);
+        inner
+            .input
+            .set_visible(!matches!(mode, Mode::Snippet | Mode::Raycast));
         inner.clear_button.set_visible(mode == Mode::Clipboard);
         inner
             .clear_button
@@ -914,9 +950,11 @@ impl Launcher {
         } else {
             tr("Actions")
         });
-        inner
-            .actions_button
-            .set_visible(mode != Mode::Snippet && mode != Mode::Emoji);
+        inner.actions_button.set_visible(
+            mode != Mode::Snippet
+                && mode != Mode::Emoji
+                && !matches!(mode, Mode::Utility(_) | Mode::Raycast),
+        );
         inner
             .actions_button
             .set_sensitive(self.has_actionable_selection());
@@ -956,7 +994,7 @@ impl Launcher {
     fn has_actionable_selection(&self) -> bool {
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.selected_result().is_some(),
-            Mode::Emoji | Mode::Snippet => false,
+            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => false,
             _ => self.selected_item().is_some(),
         }
     }
@@ -971,7 +1009,10 @@ impl Launcher {
         let Some(ctx) = self.ctx() else { return };
         let inner = &self.inner;
         let mode = self.mode();
-        if matches!(mode, Mode::Emoji | Mode::Snippet | Mode::Extension(_)) {
+        if matches!(
+            mode,
+            Mode::Emoji | Mode::Snippet | Mode::Extension(_) | Mode::Utility(_) | Mode::Raycast
+        ) {
             return;
         }
         let query = self.query();
@@ -1118,7 +1159,9 @@ impl Launcher {
                 }
                 items
             }
-            Mode::Emoji | Mode::Snippet | Mode::Extension(_) => Vec::new(),
+            Mode::Emoji | Mode::Snippet | Mode::Extension(_) | Mode::Utility(_) | Mode::Raycast => {
+                Vec::new()
+            }
         };
 
         let selected = previous_id
@@ -1184,7 +1227,7 @@ impl Launcher {
                 self.schedule_extension_search();
                 self.update_chrome();
             }
-            Mode::Snippet => {}
+            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
             Mode::Root => {
                 if let Some(ctx) = self.ctx() {
                     crate::services::rates::request(&ctx, &self.query());
@@ -1295,6 +1338,52 @@ impl Launcher {
     }
 
     fn on_key(&self, keyval: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
+        if !self.inner.preedit.get() {
+            if self.mode() == Mode::Root
+                && state.is_empty()
+                && matches!(keyval, gdk::Key::Return | gdk::Key::KP_Enter)
+            {
+                let query = self.query();
+                if let Some(word) = query.strip_prefix("define ") {
+                    self.set_mode(Mode::Utility(UtilityKind::Dictionary));
+                    self.set_query_silently(word);
+                    self.inner.utility.activate(word);
+                    return glib::Propagation::Stop;
+                }
+                if let Some(query) = query.strip_prefix("notes ") {
+                    if let Some(ctx) = self.ctx() {
+                        let launcher = self.clone();
+                        match views::notes::open_notes(&ctx.app, &ctx, None, false, move || {
+                            launcher.show()
+                        }) {
+                            Ok(page) => {
+                                self.hide();
+                                page.set_query(query);
+                            }
+                            Err(e) => self.fail(e.to_string()),
+                        }
+                    }
+                    return glib::Propagation::Stop;
+                }
+            }
+            if matches!(self.mode(), Mode::Utility(_)) {
+                if self.inner.utility.key(keyval, state, &self.query()) {
+                    return glib::Propagation::Stop;
+                }
+                if matches!(keyval, gdk::Key::Return | gdk::Key::KP_Enter)
+                    && self.inner.input.has_focus()
+                {
+                    self.inner.utility.activate(&self.query());
+                    return glib::Propagation::Stop;
+                }
+            }
+            if let Some(command) =
+                translate_key(keyval, state).and_then(|(key, mods)| keys::note_command(key, mods))
+            {
+                self.execute_command(command);
+                return glib::Propagation::Stop;
+            }
+        }
         let Some((key, mods)) = translate_key(keyval, state) else {
             return glib::Propagation::Proceed;
         };
@@ -1386,7 +1475,7 @@ impl Launcher {
     fn move_selection(&self, delta: isize) {
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.move_selection(delta),
-            Mode::Emoji | Mode::Snippet => {}
+            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
             _ => {
                 let current = self.inner.list.selected();
                 self.select_index(current.saturating_add_signed(delta));
@@ -1398,7 +1487,7 @@ impl Launcher {
         self.inner.selection_touched.set(true);
         match self.mode() {
             Mode::Extension(_) => self.inner.extension.select(index),
-            Mode::Emoji | Mode::Snippet => {}
+            Mode::Emoji | Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
             _ => self.inner.list.select(index, false),
         }
     }
@@ -1407,7 +1496,7 @@ impl Launcher {
     pub fn perform_selected(&self) {
         match self.mode() {
             Mode::Emoji => self.inner.emoji.activate_selected(),
-            Mode::Snippet => {}
+            Mode::Snippet | Mode::Utility(_) | Mode::Raycast => {}
             Mode::Extension(_) => {
                 if let Some(result) = self.inner.extension.selected_result()
                     && let Some(action) = result.actions.first()

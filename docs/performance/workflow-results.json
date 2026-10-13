@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-13",
+  "samples": [
+    {
+      "state": "unbounded-empty-commands",
+      "application_count": 117,
+      "first_show_ms": 118.3240416658009,
+      "idle_cpu_percent": 0.22394000000000247,
+      "index_ready_ms": 446.3356666665277,
+      "navigation_p50_ms": 0.08254166641563643,
+      "navigation_p95_ms": 0.12237499959155684,
+      "peak_rss_mib": 155.4375,
+      "query_p50_ms": 5.6045833334792405,
+      "query_p95_ms": 30.978124999819556,
+      "workload_cpu_seconds": 2.5736019999999993,
+      "workload_wall_seconds": 2.7581311250005456
+    },
+    {
+      "state": "unbounded-empty-commands-repeat",
+      "application_count": 117,
+      "first_show_ms": 125.33983333287324,
+      "idle_cpu_percent": 0.20647999999999556,
+      "index_ready_ms": 444.6404166665161,
+      "navigation_p50_ms": 0.08204166715586325,
+      "navigation_p95_ms": 0.11199999971722718,
+      "peak_rss_mib": 155.5,
+      "query_p50_ms": 7.72229166705074,
+      "query_p95_ms": 29.96954166701471,
+      "workload_cpu_seconds": 2.461287,
+      "workload_wall_seconds": 2.6612615000003643
+    },
+    {
+      "state": "bounded-empty-suggestions",
+      "application_count": 117,
+      "first_show_ms": 88.60187500067696,
+      "idle_cpu_percent": 0.22346000000000643,
+      "index_ready_ms": 382.8025416669334,
+      "navigation_p50_ms": 0.07783333330735331,
+      "navigation_p95_ms": 0.10112500058312435,
+      "peak_rss_mib": 131.296875,
+      "query_p50_ms": 4.625499999747262,
+      "query_p95_ms": 14.231958332857175,
+      "workload_cpu_seconds": 1.459849,
+      "workload_wall_seconds": 1.5590252916663303
+    }
+  ],
+  "file_visibility_duration_ms": 648.8415
+}

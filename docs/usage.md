@@ -137,3 +137,43 @@ Accessibility permission is required on use; the settings page shows its status 
 Copying a calculator result adds it to Calculator History. Typing alone never records a calculation. Open Calculator History to search expressions/results, copy a saved answer, or use Actions → Clear Calculator History. History is local and excluded from portable profiles/configuration.
 
 Snippets accept `{name:friend}` as a default value and `{date}`, `{time}`, or `{clipboard}` as values resolved locally when invoked. Repeated prompted values are shared; dynamic values cannot have defaults. In Settings → Snippets, assign an optional keyword such as `;addr` and explicitly enable keyword expansion. Typing the keyword followed by a space replaces it only when all prompted values have defaults. Otherwise the typed text stays untouched. The monitor uses a bounded in-memory tail, clears it on focus/navigation/app changes, ignores its own generated events, and skips secure input. Its opt-in remains global and is excluded from configuration/profile export.
+
+## Additional macOS workflows
+
+The empty launcher shows a bounded set of everyday command suggestions alongside your configured apps and favorites. Every command remains available through search and Browse Commands. Search for these command names in the launcher, Browse Commands, or the command shortcut settings:
+
+| Command | Behavior |
+| --- | --- |
+| Search Windows | Search accessible window titles across running apps and raise a selected document. |
+| Search Menu Commands | Search enabled commands in the app you used before opening Kebloop. |
+| Calendar and Meetings | Opt into calendar access, choose calendars, and see the next eligible meeting. |
+| Join Next Meeting | Open the next meeting's conferencing link explicitly; calendar setup is available if needed. |
+| Selected Text Actions | Correct grammar, rewrite, translate, or summarize the selection, then review the result before copying or replacing. |
+| Floating Markdown Notes | Browse notes inside the launcher, then open a floating rendered preview. |
+| New Note | Start editing a new note immediately; also available with ⌘N in the launcher. |
+| Dictionary Lookup | Look up a word inside the launcher, with native Dictionary fallback. Type `define word` for direct access. |
+| Dictation | Record, review, copy, and insert inside the launcher using keyboard shortcuts. |
+| Import Raycast Export | Preview JSON snippets/quicklinks, choose categories and items, and preserve conflicting existing settings. |
+| Raycast Compatible Commands | Review supported scripts and standalone no-view JavaScript extensions; imports remain disabled pending review. |
+| Saved Window Layouts | Capture movable windows across running apps and restore an arrangement with a partial-failure report. |
+
+Window/menu search, layouts, and selected-text reading use Accessibility only when invoked. Disappearing or unsupported windows produce feedback. Layouts match application bundle identifiers and exact window titles, including an ordinal for duplicate titles. Missing applications and documents are skipped; restoring never launches applications or opens documents. Frames are relative to the original display's usable area, with a fallback to an available display when the original one disappears.
+
+Calendar access is off until you choose Allow Calendar Access. Calendar choices are local to this Mac. Declined, canceled, all-day, and finished events are excluded. Meeting links are read from event URL, location, and notes. No event is created and no meeting opens automatically.
+
+Selected-text reading uses Accessibility directly and preserves the clipboard. Secure fields and secure input are excluded. Choose a provider before processing: local Ollama requires an installed, running service and model; OpenAI and Anthropic require your own API key. Cloud options send the selected text to that provider only when you invoke an action. API keys live in macOS Keychain and are excluded from configuration exports. Instructions and selected content are sent separately. Replacement is explicit and rechecks the original application and selection; a copy remains available when insertion fails.
+
+Notes are UTF-8 `.md` files under `~/Library/Application Support/Kebloop/Notes`. Edits save automatically with atomic file replacement and recovery drafts. Recovery is offered on reopening when a draft differs from the saved file; choose Restore or Discard. Export writes a standalone Markdown file. Notes are local content and are separate from portable configuration and profiles.
+
+Dictation requests microphone and Speech Recognition permission only when you start recording, requires on-device recognition support for the chosen language, and shows its recording state. Audio is not sent to a cloud fallback. Stop recording and review the transcript before inserting into the previous app; Copy remains available if insertion cannot proceed.
+
+Raycast compatibility has deliberate format and API limits. See [supported exports, scripts, and exclusions](raycast.md). Imported typing triggers are omitted, and scripts are disabled until reviewed. Kebloop's own export/import format remains supported.
+
+### Keyboard-first notes, dictionary, and dictation
+
+Notes, Dictionary, and Dictation appear in the empty launcher and the menu-bar menu. Their stable commands can also receive global shortcuts in Settings.
+
+- **Notes:** `⌘⇧N` opens the launcher note list. Search, navigate with Up/Down, and press Return to open a floating preview. `notes search text` filters the list directly. `⌘N` creates a note and starts editing immediately.
+- **Floating notes:** a single pane shows the rendered note, with an Edit/Preview toggle and a More menu. Return or `⌘E` enters the editor; new notes start blank with the cursor ready to type. Normal typing, selection, copy/paste, and Undo use the native macOS text editor. `⌘Return`, `⌘S`, or Escape saves and returns to preview; Escape from preview closes. `⌘W` saves and closes, `⌘N` saves and creates another blank note, and `⌘P` saves and returns to the launcher note list. `⌘F` finds text within the current note using the native find bar, `⌘G` / `⌘⇧G` move between matches, and Escape dismisses the find bar first. `⌘⇧E` exports; `⌘Delete` confirms note deletion in preview and retains normal line deletion while editing. Recovery uses `⌘⇧R` to restore and `⌘⇧D` to discard. Failed saves retain the draft and prevent switching or closing.
+- **Dictionary:** select Dictionary, type a word, and press Return, or type `define word` in root search. `⌘C` copies the definition when no text is selected; existing selections retain normal copy behavior. `⌘O` opens native Dictionary. Escape returns to root search.
+- **Dictation:** select Dictation, then `⌘Return` starts or stops recording. `⌘E` focuses the transcript editor, `⌘⇧C` copies, and `⌘⇧Return` inserts into the previous app. Escape cancels active recording; a second Escape returns to root search. Closing the launcher cancels recording. Audio capture still requires explicit Start and system consent.

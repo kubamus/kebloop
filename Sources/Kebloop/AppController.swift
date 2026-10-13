@@ -46,6 +46,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let scripts = ScriptCommandStore()
     private let extensions = ExtensionStore()
     private var automationWindows: [NSWindow] = []
+    private var workflowCleanup: [ObjectIdentifier: () -> Void] = [:]
+    private lazy var raycastSDK = RaycastSDKStore()
+    private lazy var calendarMeetings = CalendarMeetingService()
+    private lazy var markdownNotes = MarkdownNoteStore()
+    private var notesPanel: NSPanel?
+    private var notesHasUnsavedDraft = false
     private let aliases = AppAliasStore()
     private let ai = AIHandoffService()
     private let personalization = PersonalizationStore()
@@ -92,6 +98,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         snippets.$snippets.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in DispatchQueue.main.async { self?.reconcileCommandBindings() } }.store(in: &subscriptions)
         configureMenus()
         launcher = LauncherPanelController(index: index, quicklinks: quicklinks, clipboard: clipboard, aliases: aliases, ai: ai, personalization: personalization, appleShortcuts: appleShortcuts, snippets: snippets, scripts: scripts, extensions: extensions)
+        launcher.noteStore = { [weak self] in self?.markdownNotes ?? MarkdownNoteStore() }
+        launcher.onNote = { [weak self] id in self?.showNotes(noteID: id) }
         launcher.profileName = { [weak self] in self?.configuration.activeProfileName ?? "Personal" }
         launcher.onScript = { [weak self] command, arguments in self?.runScript(command, arguments: arguments) }
         launcher.onExtension = { [weak self] in self?.showExtension($0) }
@@ -107,6 +115,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "command.square", accessibilityDescription: "Kebloop")
         let menu = NSMenu()
         menu.addItem(withTitle: L("Open Kebloop"), action: #selector(openLauncher), keyEquivalent: "")
+        menu.addItem(withTitle: LauncherCommand.notes.title, action: #selector(openNotes), keyEquivalent: "")
+        menu.addItem(withTitle: LauncherCommand.newNote.title, action: #selector(createNote), keyEquivalent: "")
+        menu.addItem(withTitle: LauncherCommand.dictionary.title, action: #selector(openDictionary), keyEquivalent: "")
+        menu.addItem(withTitle: LauncherCommand.dictation.title, action: #selector(openDictation), keyEquivalent: "")
         menu.addItem(withTitle: L("Settings…"), action: #selector(showSettings), keyEquivalent: ",")
         menu.addItem(withTitle: L("Refresh Applications"), action: #selector(refresh), keyEquivalent: "")
         menu.addItem(.separator())
@@ -153,7 +165,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         bar.addItem(editItem)
         NSApp.mainMenu = bar
     }
-    func windowWillClose(_ notification: Notification) { shortcuts?.resume(); commandShortcuts?.resume() }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === notesPanel, notesHasUnsavedDraft { return false }
+        return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if notesHasUnsavedDraft {
+            notesPanel?.makeKeyAndOrderFront(nil)
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            if window === notesPanel { markdownNotes.flushAll() }
+            workflowCleanup.removeValue(forKey: ObjectIdentifier(window))?()
+            automationWindows.removeAll { $0 === window }
+        }
+        shortcuts?.resume(); commandShortcuts?.resume()
+    }
     private func type(general: String) -> UInt32 { general.utf8.reduce(0) { ($0 << 8) | UInt32($1) } }
     private func registerShortcut() {
         shortcuts?.suspend()
@@ -201,11 +233,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         shortcuts.reload(register: false); commandShortcuts.reload(register: false)
         shortcuts.resume(); commandShortcuts.resume()
     }
-    private func automationWindow<V: View>(title: String, view: V) {
+    private func automationWindow<V: View>(title: String, view: V, onClose: (() -> Void)? = nil) {
         launcher.dismiss(restoreFocus: false)
         automationWindows.removeAll { !$0.isVisible }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 520), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = title; window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 740, height: 540)
+        window.delegate = self
+        workflowCleanup[ObjectIdentifier(window)] = onClose
         window.contentView = NSHostingView(rootView: view)
         automationWindows.append(window); window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
@@ -218,6 +253,39 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func handleCommand(_ command: LauncherCommand) {
         switch command {
+        case .calendar:
+            automationWindow(title: command.title, view: CalendarMeetingSettingsView(service: calendarMeetings))
+        case .joinNextMeeting:
+            launcher.dismiss(restoreFocus: false)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let message = await self.calendarMeetings.joinNextMeeting() {
+                    self.automationWindow(title: command.title, view: VStack(alignment: .leading) {
+                        Text(message).padding()
+                        CalendarMeetingSettingsView(service: self.calendarMeetings)
+                    })
+                }
+            }
+        case .selectedText:
+            let target = launcher.previousApplication
+            let service = SelectedTextActionsService()
+            automationWindow(title: command.title, view: SelectedTextActionsView(application: target, service: service), onClose: { service.cancelTransform() })
+        case .newNote:
+            guard !notesHasUnsavedDraft else { notesPanel?.makeKeyAndOrderFront(nil); return }
+            if let note = markdownNotes.create(contents: "") { showNotes(noteID: note.id, editing: true) }
+            else { showNotes() }
+        case .notes, .dictionary, .dictation: launcher.executeCommand(id: command.id)
+        case .raycastImport:
+            automationWindow(title: command.title, view: RaycastMigrationView(snippets: snippets, quicklinks: quicklinks))
+        case .raycastExtensions:
+            automationWindow(title: command.title, view: RaycastCompatibleCommandsView(scripts: scripts, sdk: raycastSDK), onClose: { [weak self] in self?.raycastSDK.cancel() })
+        case .windowLayouts:
+            launcher.dismiss(restoreFocus: false)
+            SavedWindowLayoutsWindowController.shared.show()
+        case .windowSearch, .menuSearch:
+            let target = launcher.previousApplication
+            launcher.dismiss(restoreFocus: false)
+            WindowMenuSearchWindowController.shared.show(application: target, scope: command == .windowSearch ? .windows : .menus)
         case .browse, .help: showHelp(onboarding: false)
         case .onboarding: showHelp(onboarding: true)
         case .snippets, .scripts, .extensions, .profiles, .appleShortcuts, .webSearch:
@@ -225,6 +293,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         default: launcher.executeCommand(id: command.rawValue)
         }
     }
+    private func showNotes(noteID: String? = nil, editing: Bool = false) {
+        guard !notesHasUnsavedDraft else { notesPanel?.makeKeyAndOrderFront(nil); return }
+        launcher.dismiss(restoreFocus: false)
+        if notesPanel == nil {
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
+                                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            panel.contentMinSize = NSSize(width: 480, height: 320)
+            panel.title = LauncherCommand.notes.title
+            panel.isReleasedWhenClosed = false
+            panel.level = .floating
+            panel.hidesOnDeactivate = false
+            panel.delegate = self
+            panel.center()
+            notesPanel = panel
+        }
+        markdownNotes.flushAll()
+        notesPanel?.contentView = NSHostingView(rootView: MarkdownNotesView(store: markdownNotes,
+            initialNoteID: noteID, initiallyEditing: editing, onClose: { [weak self] in
+                self?.notesPanel?.close(); self?.launcher.restorePreviousFocus()
+            }, onUnsavedDraftChanged: { [weak self] pending in self?.notesHasUnsavedDraft = pending },
+            onBrowse: { [weak self] in
+                self?.notesPanel?.close()
+                self?.launcher.executeCommand(id: LauncherCommand.notes.id)
+            }))
+        notesPanel?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func showHelp(onboarding: Bool) {
         launcher.dismiss(restoreFocus: false)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 520), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -245,6 +341,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.center(); NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
     }
 
+    @objc private func openNotes() { launcher.executeCommand(id: LauncherCommand.notes.id) }
+    @objc private func createNote() { launcher.executeCommand(id: LauncherCommand.newNote.id) }
+    @objc private func openDictionary() { launcher.executeCommand(id: LauncherCommand.dictionary.id) }
+    @objc private func openDictation() { launcher.executeCommand(id: LauncherCommand.dictation.id) }
     @objc private func openLauncher() { launcher.show() }
     @objc private func refresh() { index.refresh() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -253,7 +353,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         settings?.orderOut(nil)
         launcher.dismiss()
     }
-    func applicationWillTerminate(_ notification: Notification) { scripts.cancel(); extensions.cancel() }
+    func applicationWillTerminate(_ notification: Notification) { markdownNotes.flushAll(); for cleanup in workflowCleanup.values { cleanup() }; scripts.cancel(); extensions.cancel() }
     @objc private func quit() { scripts.cancel(); extensions.cancel(); NSApp.terminate(nil) }
     private func applyWindowAppearance() {
         let appearance: NSAppearance?
@@ -264,6 +364,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         settings?.appearance = appearance
         helpWindow?.appearance = appearance
+        notesPanel?.appearance = appearance
+        for window in automationWindows { window.appearance = appearance }
     }
     @objc func showSettings() {
         launcher.dismiss(restoreFocus: false)

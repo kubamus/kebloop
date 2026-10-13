@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 import KebloopCore
 import os
 import UniformTypeIdentifiers
@@ -36,9 +37,12 @@ private final class SearchField: NSTextField {
 }
 
 private enum LauncherMode: String {
-    case root, clipboard, quicklinks, webSearch, snippets, calculationHistory
+    case root, clipboard, quicklinks, webSearch, snippets, calculationHistory, notes, dictionary, dictation
     var title: String {
         switch self {
+        case .notes: return L("Notes")
+        case .dictionary: return L("Dictionary")
+        case .dictation: return L("Dictation")
         case .calculationHistory: return L("Calculator History")
         case .snippets: return L("Snippets")
         case .root: return L("Results")
@@ -49,6 +53,9 @@ private enum LauncherMode: String {
     }
     var placeholder: String {
         switch self {
+        case .notes: return L("Search notes…  ⌘N New Note")
+        case .dictionary: return L("Type a word, then press Return…")
+        case .dictation: return L("Dictation · ⌘Return Start or stop")
         case .calculationHistory: return L("Search calculation history…")
         case .snippets: return L("Search snippets…")
         case .root: return L("Search apps, links, or commands…")
@@ -66,6 +73,7 @@ private enum LauncherResult {
     case command(LauncherCommand)
     case quicklink(Quicklink)
     case clipboard(ClipboardEntry)
+    case note(MarkdownNote)
     case snippet(Snippet)
     case script(ScriptCommand)
     case userExtension(ExtensionManifest)
@@ -81,6 +89,7 @@ private enum LauncherResult {
         case .quicklink(let link): return "link:\(link.id)"
         case .script(let script): return script.commandID
         case .userExtension(let manifest): return manifest.commandID
+        case .note(let note): return "note:" + note.id
         case .snippet(let snippet): return "snippet:\(snippet.id)"
         case .clipboard(let entry): return "clipboard:\(entry.id)"
         case .file(let file): return "file:\(file.id)"
@@ -124,6 +133,8 @@ private final class ResultButton: NSButton {
 
 @MainActor
 final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
+    var onNote: ((String) -> Void)?
+    var noteStore: (() -> MarkdownNoteStore)?
     var onScript: ((ScriptCommand, [String]) -> Void)?
     var onExtension: ((ExtensionManifest) -> Void)?
     var onSettings: (() -> Void)?
@@ -168,6 +179,19 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private let windowManagement = WindowManagementService()
     private let panel: LauncherPanel
     private let input = SearchField()
+    private let utilityHost = NSView()
+    private var utilityHostingView: NSView?
+    private var utilityHeight: NSLayoutConstraint!
+    private var loadedNotes: MarkdownNoteStore?
+    private var notesSubscription: AnyCancellable?
+    private var inlineDictation: OnDeviceDictationService?
+    private var dictionaryDefinition: String?
+    private var dictionaryLoading = false
+    private var dictionaryLookedUp = false
+    private var dictionaryRevision = UUID()
+    private var dictionaryTask: Task<Void, Never>?
+    private var dictationDeliveryTask: Task<Void, Never>?
+    private let lookupDefinition: @Sendable (String) -> String?
     private let rows = FlippedStackView()
     private let scrollView = NSScrollView()
     private var scrollHeight: NSLayoutConstraint!
@@ -175,6 +199,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private let searchIcon = NSImageView()
     private let category = NSTextField(labelWithString: "APPLICATIONS")
     private var results: [LauncherResult] = []
+    var currentModeID: String { mode.rawValue }
+    var currentDictionaryDefinition: String? { dictionaryDefinition }
     var currentQuery: String { input.stringValue }
     var resultIdentifiers: [String] { results.map(\.id) }
     private var selection = 0
@@ -186,8 +212,10 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private var outsideMonitor: Any?
     private var message: String?
 
-    init(index: ApplicationIndex, quicklinks: QuicklinkStore, clipboard: ClipboardHistoryStore, aliases: AppAliasStore, ai: AIHandoffService, personalization: PersonalizationStore? = nil, appleShortcuts: AppleShortcutsService? = nil, snippets: SnippetStore? = nil, scripts: ScriptCommandStore? = nil, extensions: ExtensionStore? = nil, currencyRates: CurrencyRateStore? = nil, calculationHistory: CalculationHistoryStore? = nil, launchApplication: ((IndexedApplication, @escaping (Error?) -> Void) -> Void)? = nil) {
+    init(index: ApplicationIndex, quicklinks: QuicklinkStore, clipboard: ClipboardHistoryStore, aliases: AppAliasStore, ai: AIHandoffService, personalization: PersonalizationStore? = nil, appleShortcuts: AppleShortcutsService? = nil, snippets: SnippetStore? = nil, scripts: ScriptCommandStore? = nil, extensions: ExtensionStore? = nil, currencyRates: CurrencyRateStore? = nil, calculationHistory: CalculationHistoryStore? = nil, launchApplication: ((IndexedApplication, @escaping (Error?) -> Void) -> Void)? = nil, dictationService: OnDeviceDictationService? = nil, lookupDefinition: @escaping @Sendable (String) -> String? = { DictionaryLookupService.definition(for: $0) }) {
         self.index = index
+        self.inlineDictation = dictationService
+        self.lookupDefinition = lookupDefinition
         self.currencyRates = currencyRates ?? CurrencyRateStore()
         self.calculationHistory = calculationHistory ?? CalculationHistoryStore()
         self.launchApplication = launchApplication ?? index.launch
@@ -271,7 +299,16 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 if self.actionsMenu.handleKey(event) { return nil }
                 return event
             }
-            if (self.input.currentEditor() as? NSTextView)?.hasMarkedText() == true { return event }
+            if (self.panel.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+            if event.modifierFlags.intersection([.command, .option, .control]) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "n" {
+                if event.modifierFlags.contains(.shift) { self.enter(.notes) }
+                else { self.onCommand?(.newNote) }
+                return nil
+            }
+            if self.mode == .dictionary || self.mode == .dictation {
+                return self.handleUtilityKey(event) ? nil : event
+            }
             if LauncherKeyboard.isActionShortcut(event) { self.showActions(); return nil }
             if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "," {
                 self.onSettings?(); return nil
@@ -313,7 +350,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             }
         }
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.dismiss(restoreFocus: false)
+            guard let self else { return }
+            if self.mode == .dictation, self.inlineDictation?.state == .requestingPermission { return }
+            self.dismiss(restoreFocus: false)
         }
     }
 
@@ -451,6 +490,11 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         scrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 330)
         scrollHeight.isActive = true
         container.addArrangedSubview(scrollView)
+        utilityHeight?.isActive = false
+        utilityHeight = utilityHost.heightAnchor.constraint(equalToConstant: 330)
+        utilityHeight.isActive = true
+        utilityHost.isHidden = true
+        container.addArrangedSubview(utilityHost)
         for view in container.arrangedSubviews {
             view.widthAnchor.constraint(equalTo: container.widthAnchor).isActive = true
         }
@@ -468,6 +512,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         else { show() }
     }
     func show() {
+        inlineDictation?.cancel()
+        dictationDeliveryTask?.cancel()
+        cancelDictionaryLookup()
         pasteService.cancel()
         presentationRevision &+= 1
         if let frontmost = NSWorkspace.shared.frontmostApplication,
@@ -501,6 +548,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private func focusInput() {
         panel.makeKeyAndOrderFront(nil)
+        if mode == .dictation { panel.makeFirstResponder(utilityHostingView); return }
         // Re-entering an active field editor can replace text typed during activation.
         if let editor = input.currentEditor(), panel.firstResponder === editor { return }
         panel.makeFirstResponder(input)
@@ -508,6 +556,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     func dismiss(restoreFocus: Bool = true) {
         guard panel.isVisible, !isConfirmingClear else { return }
+        inlineDictation?.cancel()
+        cancelDictionaryLookup()
         actionsMenu.close(restoreFocus: false)
         panel.orderOut(nil)
         files.stop()
@@ -515,12 +565,20 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             previousApp.activate(options: [])
         }
     }
-    func windowDidResignKey(_ notification: Notification) { if !isConfirmingClear && !actionMenuOpen { dismiss(restoreFocus: false) } }
+    func windowDidResignKey(_ notification: Notification) {
+        if mode == .dictation, inlineDictation?.state == .requestingPermission { return }
+        if !isConfirmingClear && !actionMenuOpen { dismiss(restoreFocus: false) }
+    }
     func controlTextDidChange(_ obj: Notification) {
         setQuery(input.stringValue)
     }
 
     func setQuery(_ query: String) {
+        if mode == .dictionary, input.stringValue != query || dictionaryLookedUp || dictionaryLoading {
+            cancelDictionaryLookup()
+            dictionaryDefinition = nil
+            dictionaryLookedUp = false
+        }
         if mode == .root, CalculatorEngine.currencyPair(in: query) != nil {
             Task { @MainActor [weak self] in
                 await self?.currencyRates.refreshIfNeeded(for: query)
@@ -557,13 +615,137 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
     @objc private func goBack() { enter(.root) }
     private func enter(_ next: LauncherMode) {
+        if mode == .dictation { inlineDictation?.cancel() }
+        cancelDictionaryLookup()
+        if next == .notes { connectNotes() }
+        if next == .dictation, inlineDictation == nil { inlineDictation = OnDeviceDictationService() }
+        dictionaryDefinition = nil
+        dictionaryLookedUp = false
+        utilityHostingView?.removeFromSuperview()
+        utilityHostingView = nil
         mode = next
         input.stringValue = ""
         message = nil
         selection = 0
         files.stop()
         updateResults()
-        panel.makeFirstResponder(input)
+        if next == .dictation { panel.makeFirstResponder(utilityHostingView) }
+        else { panel.makeFirstResponder(input) }
+    }
+
+    private func connectNotes() {
+        guard loadedNotes == nil else { return }
+        let store = noteStore?() ?? MarkdownNoteStore()
+        loadedNotes = store
+        notesSubscription = store.$notes.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self, self.mode == .notes, self.panel.isVisible else { return }
+            self.updateResults(preserveSelection: true)
+        }
+    }
+
+    private func cancelDictionaryLookup() {
+        dictionaryRevision = UUID()
+        dictionaryTask?.cancel()
+        dictionaryTask = nil
+        dictionaryLoading = false
+    }
+
+    func lookupDictionary() {
+        guard mode == .dictionary else { return }
+        cancelDictionaryLookup()
+        let word = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty, word.utf16.count <= 256 else { return }
+        let revision = dictionaryRevision
+        let lookup = lookupDefinition
+        dictionaryLoading = true
+        dictionaryLookedUp = false
+        render()
+        dictionaryTask = Task { @MainActor [weak self] in
+            let definition = await Task.detached { lookup(word) }.value
+            guard !Task.isCancelled, let self, self.mode == .dictionary, self.dictionaryRevision == revision else { return }
+            self.dictionaryDefinition = definition
+            self.dictionaryLoading = false
+            self.dictionaryLookedUp = true
+            self.render()
+        }
+    }
+
+    private func toggleDictation() {
+        guard mode == .dictation, let service = inlineDictation else { return }
+        if service.state == .recording { service.stop() }
+        else if service.state == .idle { Task { await service.start() } }
+    }
+
+    private func insertDictation() {
+        guard let service = inlineDictation, service.state == .idle else { return }
+        let target = previousApp
+        dismiss(restoreFocus: false)
+        dictationDeliveryTask = Task { @MainActor [weak self] in
+            if let failure = await service.insertTranscript(into: target), !Task.isCancelled {
+                self?.showPasteFeedback(failure)
+            }
+        }
+    }
+
+    func handleUtilityKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == 53 {
+            if mode == .dictation, inlineDictation?.state != .idle { inlineDictation?.cancel() }
+            else { enter(.root) }
+            return true
+        }
+        if mode == .dictionary, modifiers == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "c",
+           ((panel.firstResponder as? NSTextView)?.selectedRange().length ?? 0) == 0,
+           let definition = dictionaryDefinition {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(definition, forType: .string)
+            return true
+        }
+        if mode == .dictionary, [36, 76].contains(event.keyCode), modifiers.isEmpty {
+            lookupDictionary(); return true
+        }
+        if mode == .dictation, [36, 76].contains(event.keyCode) {
+            if modifiers == [.command, .shift] { insertDictation(); return true }
+            if modifiers == .command { toggleDictation(); return true }
+        }
+        return false
+    }
+
+    private func renderUtility() {
+        for row in rows.arrangedSubviews { rows.removeArrangedSubview(row); row.removeFromSuperview() }
+        category.stringValue = mode.title
+        input.placeholderString = mode.placeholder
+        searchIcon.isHidden = true
+        backButton.isHidden = false
+        clearHistoryButton.isHidden = true
+        aiButton.isHidden = true
+        actionButton.isHidden = true
+        let view: AnyView
+        if mode == .dictionary {
+            view = AnyView(LauncherDictionaryView(word: input.stringValue, definition: dictionaryDefinition,
+                loading: dictionaryLoading, lookedUp: dictionaryLookedUp, onLookup: { [weak self] in self?.lookupDictionary() }))
+        } else if let service = inlineDictation {
+            if utilityHostingView != nil { resizeUtility(); return }
+            view = AnyView(LauncherDictationView(service: service, application: previousApp, onInsert: { [weak self] in self?.insertDictation() }))
+        } else { return }
+        utilityHostingView?.removeFromSuperview()
+        let hosting = NSHostingView(rootView: view)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        utilityHost.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: utilityHost.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: utilityHost.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: utilityHost.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: utilityHost.bottomAnchor)
+        ])
+        utilityHostingView = hosting
+        resizeUtility()
+    }
+
+    private func resizeUtility() {
+        let old = panel.frame
+        panel.setFrame(NSRect(x: old.minX, y: old.maxY - 409, width: personalization.settings.panelWidth, height: 409), display: true)
     }
 
     private func updateResults(preserveSelection: Bool = false) {
@@ -582,12 +764,18 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             let shortcutResults = config.commandsEnabled ? appleShortcuts.selected.map(LauncherResult.appleShortcut) : []
             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let rankedApps = rank(appResults, query: "")
+                // Keep the empty panel bounded as the registry grows; search and Browse Commands expose everything.
+                let suggestions: [LauncherResult] = config.commandsEnabled
+                    ? [LauncherCommand.clipboard, .quicklinks, .snippets, .emoji, .notes, .calendar, .dictionary, .dictation, .browse, .settings].map(LauncherResult.command)
+                    : []
                 let favorites = pinnedResults(from: appResults + linkResults + commands + shortcutResults + snippetResults)
-                if config.emptyMode == "favorites" { results = favorites + commands.filter { !favorites.map(\.id).contains($0.id) } }
-                else if config.emptyMode == "recent" { results = recentIDs.compactMap { id in (appResults + linkResults + shortcutResults).first { $0.id == id } } + commands }
-                else { results = favorites + Array(rankedApps.filter { !favorites.map(\.id).contains($0.id) }.prefix(3)) + commands.filter { !favorites.map(\.id).contains($0.id) } }
+                if config.emptyMode == "favorites" { results = favorites + suggestions.filter { !favorites.map(\.id).contains($0.id) } }
+                else if config.emptyMode == "recent" { results = recentIDs.compactMap { id in (appResults + linkResults + shortcutResults).first { $0.id == id } } + suggestions }
+                else { results = favorites + Array(rankedApps.filter { !favorites.map(\.id).contains($0.id) }.prefix(3)) + suggestions.filter { !favorites.map(\.id).contains($0.id) } }
             } else {
                 results = Array(rank(appResults + linkResults + commands + shortcutResults + snippetResults, query: query).prefix(12))
+                if LauncherUtilityQuery.dictionaryWord(in: query) != nil { results.insert(.command(.dictionary), at: 0); results = uniqueResults(results) }
+                if LauncherUtilityQuery.noteSearch(in: query) != nil { results.insert(.command(.notes), at: 0); results = uniqueResults(results) }
                 // Indexed files enrich results without delaying or overtaking app matches.
                 results += files.results.filter { personalization.allowsFile(path: $0.path) }.prefix(12).map(LauncherResult.file)
                 if config.linksEnabled, let resolved = quicklinks.resolve(query: query) { results.insert(.quicklink(resolved.link), at: 0); results = uniqueResults(results) }
@@ -598,6 +786,10 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 case .none, .incomplete: break
                 }
             }
+        case .dictionary, .dictation: results = []
+        case .notes:
+            let matches = loadedNotes?.notes.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.contents.localizedCaseInsensitiveContains(query) } ?? []
+            results = matches.map(LauncherResult.note) + [.command(.newNote)]
         case .calculationHistory:
             results = calculationHistory.entries.filter { query.isEmpty || $0.expression.localizedCaseInsensitiveContains(query) || $0.display.localizedCaseInsensitiveContains(query) }.map(LauncherResult.historicalCalculation)
         case .snippets:
@@ -627,6 +819,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             case .application(let app): name = app.name
             case .script(let script): name = script.title
             case .userExtension(let manifest): name = manifest.name
+            case .note(let note): name = note.title
             case .snippet(let snippet): name = snippet.name
             case .quicklink(let link): name = link.name
             case .command(let command): name = command.title
@@ -660,8 +853,17 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         let interval = OSSignpostID(log: Self.performanceLog)
         os_signpost(.begin, log: Self.performanceLog, name: "Render rows", signpostID: interval)
         defer { os_signpost(.end, log: Self.performanceLog, name: "Render rows", signpostID: interval) }
+        let isUtility = mode == .dictionary || mode == .dictation
+        utilityHost.isHidden = !isUtility
+        scrollView.isHidden = isUtility
+        input.isEditable = mode != .dictation
+        input.isSelectable = mode != .dictation
+        if isUtility { renderUtility(); return }
+        utilityHostingView?.removeFromSuperview()
+        utilityHostingView = nil
         for view in rows.arrangedSubviews { rows.removeArrangedSubview(view); view.removeFromSuperview() }
         category.stringValue = mode.title + (profileName.map { " · " + $0() } ?? "")
+        actionButton.isHidden = false
         actionButton.isEnabled = !results.isEmpty
         actionButton.title = personalization.settings.showShortcutHints ? "Actions ⌘K" : "Actions"
         input.placeholderString = mode.placeholder
@@ -702,6 +904,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 icon = NSImage(systemSymbolName: command.symbol, accessibilityDescription: nil)
                 title = command.title
                 switch command {
+                case .dictionary: subtitle = LauncherUtilityQuery.dictionaryWord(in: input.stringValue) ?? L("Type a word, then press Return…")
+                case .notes: subtitle = LauncherUtilityQuery.noteSearch(in: input.stringValue) ?? L("Browse notes · ⌘N New Note")
+                case .dictation: subtitle = L("On-device dictation · ⌘Return Start or stop")
                 case .settings: subtitle = L("Preferences and shortcuts")
                 case .shutdown: subtitle = L("Shows macOS shutdown confirmation")
                 default: subtitle = L("Command")
@@ -719,6 +924,11 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 let argument = quicklinks.resolve(query: input.stringValue).flatMap { $0.link.id == link.id ? $0.argument : nil } ?? ""
                 subtitle = link.keyword.isEmpty ? link.target : "\(link.keyword) · \(link.resolvedURL(argument: argument)?.absoluteString ?? link.target)"
                 action = L("Open")
+            case .note(let note):
+                icon = NSImage(systemSymbolName: "note.text", accessibilityDescription: nil)
+                title = note.title
+                subtitle = note.modifiedAt.formatted(date: .abbreviated, time: .shortened)
+                action = L("Preview")
             case .script(let script):
                 icon = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
                 title = script.title; subtitle = script.description; action = L("Run")
@@ -874,6 +1084,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     private func announceSelection() {
+        guard mode != .dictionary && mode != .dictation else { return }
         guard rows.arrangedSubviews.indices.contains(selection) else { return }
         let row = rows.arrangedSubviews[selection]
         NSAccessibility.post(element: input, notification: .announcementRequested, userInfo: [
@@ -1154,6 +1365,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private var emptyMessage: String {
         switch mode {
+        case .notes: return L("No notes yet. Press ⌘N to create one.")
+        case .dictionary, .dictation: return ""
         case .calculationHistory: return L("Copy a calculation to start your history")
         case .snippets: return L("Add snippets in Settings")
         case .root: return files.isSearching ? "Searching files…" : (index.isRefreshing ? "Finding your apps…" : "No results")
@@ -1187,6 +1400,8 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     var isVisible: Bool { panel.isVisible }
     func performSelected() {
+        if mode == .dictionary { lookupDictionary(); return }
+        if mode == .dictation { toggleDictation(); return }
         guard panel.isVisible, results.indices.contains(selection) else { return }
         recordRecent(results[selection].id)
         switch results[selection] {
@@ -1218,6 +1433,17 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             switch command {
             case .calculationHistory: enter(.calculationHistory)
             case .snippets: enter(.snippets)
+            case .notes:
+                let search = LauncherUtilityQuery.noteSearch(in: input.stringValue)
+                enter(.notes)
+                if let search { setQuery(search) }
+            case .dictionary:
+                let word = LauncherUtilityQuery.dictionaryWord(in: input.stringValue)
+                enter(.dictionary)
+                if let word { setQuery(word); lookupDictionary() }
+            case .dictation: enter(.dictation)
+            case .newNote: onCommand?(command)
+            case .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .raycastImport, .raycastExtensions, .windowLayouts: onCommand?(command)
             case .scripts, .extensions: onCommand?(command)
             case .clipboard: enter(.clipboard)
             case .quicklinks: enter(.quicklinks)
@@ -1246,6 +1472,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             }
             usage[context.resultID, default: 0] += 1
             UserDefaults.standard.set(usage, forKey: "usage")
+        case .note(let note): onNote?(note.id)
         case .script(let script): onScript?(script, [])
         case .userExtension(let manifest): onExtension?(manifest)
         case .snippet(let snippet):

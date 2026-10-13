@@ -1,0 +1,25 @@
+{
+  "name": "kebloop-compatible-greeting",
+  "title": "Compatible Greeting",
+  "commands": [
+    {
+      "name": "greeting",
+      "title": "Greeting",
+      "mode": "no-view"
+    },
+    {
+      "name": "copy-uuid",
+      "title": "Copy UUID",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "name",
+      "title": "Name",
+      "type": "textfield",
+      "required": true,
+      "default": "World"
+    }
+  ]
+}

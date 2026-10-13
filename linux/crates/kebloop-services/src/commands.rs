@@ -85,11 +85,23 @@ pub enum LauncherCommand {
     WebSearch,
     /// Apple Shortcuts (macOS only; kept for configuration compatibility).
     AppleShortcuts,
+    NewNote,
+    WindowSearch,
+    MenuSearch,
+    Calendar,
+    JoinNextMeeting,
+    SelectedText,
+    Notes,
+    Dictionary,
+    Dictation,
+    RaycastImport,
+    RaycastExtensions,
+    WindowLayouts,
 }
 
 impl LauncherCommand {
     /// Every command in presentation order.
-    pub const ALL: [LauncherCommand; 39] = [
+    pub const ALL: [LauncherCommand; 51] = [
         Self::Lock,
         Self::Sleep,
         Self::Restart,
@@ -129,6 +141,18 @@ impl LauncherCommand {
         Self::Profiles,
         Self::WebSearch,
         Self::AppleShortcuts,
+        Self::NewNote,
+        Self::WindowSearch,
+        Self::MenuSearch,
+        Self::Calendar,
+        Self::JoinNextMeeting,
+        Self::SelectedText,
+        Self::Notes,
+        Self::Dictionary,
+        Self::Dictation,
+        Self::RaycastImport,
+        Self::RaycastExtensions,
+        Self::WindowLayouts,
     ];
 
     /// Stable persisted identifier.
@@ -173,6 +197,18 @@ impl LauncherCommand {
             Self::Profiles => "profiles",
             Self::WebSearch => "webSearch",
             Self::AppleShortcuts => "appleShortcuts",
+            Self::NewNote => "newNote",
+            Self::WindowSearch => "windowSearch",
+            Self::MenuSearch => "menuSearch",
+            Self::Calendar => "calendar",
+            Self::JoinNextMeeting => "joinNextMeeting",
+            Self::SelectedText => "selectedText",
+            Self::Notes => "notes",
+            Self::Dictionary => "dictionary",
+            Self::Dictation => "dictation",
+            Self::RaycastImport => "raycastImport",
+            Self::RaycastExtensions => "raycastExtensions",
+            Self::WindowLayouts => "windowLayouts",
         }
     }
 
@@ -223,6 +259,18 @@ impl LauncherCommand {
             Self::Profiles => "Profiles",
             Self::WebSearch => "Web Search",
             Self::AppleShortcuts => "Apple Shortcuts",
+            Self::NewNote => "New Note",
+            Self::WindowSearch => "Search Windows",
+            Self::MenuSearch => "Search Menu Items",
+            Self::Calendar => "Calendar Events",
+            Self::JoinNextMeeting => "Join Next Meeting",
+            Self::SelectedText => "Selected Text Actions",
+            Self::Notes => "Floating Markdown Notes",
+            Self::Dictionary => "Dictionary Lookup",
+            Self::Dictation => "Dictation",
+            Self::RaycastImport => "Import Raycast Export",
+            Self::RaycastExtensions => "Raycast Compatibility",
+            Self::WindowLayouts => "Saved Window Layouts",
         }
     }
 
@@ -273,6 +321,18 @@ impl LauncherCommand {
             Self::Profiles => "person.crop.circle",
             Self::WebSearch => "globe",
             Self::AppleShortcuts => "square.stack.3d.up",
+            Self::NewNote => "note.text.badge.plus",
+            Self::WindowSearch => "macwindow",
+            Self::MenuSearch => "list.bullet",
+            Self::Calendar => "calendar",
+            Self::JoinNextMeeting => "video",
+            Self::SelectedText => "text.cursor",
+            Self::Notes => "note.text",
+            Self::Dictionary => "book",
+            Self::Dictation => "mic",
+            Self::RaycastImport => "square.and.arrow.down",
+            Self::RaycastExtensions => "puzzlepiece.extension",
+            Self::WindowLayouts => "rectangle.3.group",
         }
     }
 
@@ -318,6 +378,18 @@ impl LauncherCommand {
             Self::Profiles => "avatar-default-symbolic",
             Self::WebSearch => "web-browser-symbolic",
             Self::AppleShortcuts => "view-grid-symbolic",
+            Self::NewNote => "list-add-symbolic",
+            Self::WindowSearch => "video-display-symbolic",
+            Self::MenuSearch => "system-search-symbolic",
+            Self::Calendar => "document-open-recent-symbolic",
+            Self::JoinNextMeeting => "insert-link-symbolic",
+            Self::SelectedText => "insert-text-symbolic",
+            Self::Notes => "text-x-generic-symbolic",
+            Self::Dictionary => "help-browser-symbolic",
+            Self::Dictation => "audio-input-microphone-symbolic",
+            Self::RaycastImport => "document-open-symbolic",
+            Self::RaycastExtensions => "application-x-addon-symbolic",
+            Self::WindowLayouts => "view-grid-symbolic",
         }
     }
 
@@ -401,6 +473,18 @@ impl LauncherCommand {
                 "shortcuts",
                 "automation",
             ],
+            Self::NewNote => &["new note", "create note"],
+            Self::WindowSearch => &["window search", "search windows"],
+            Self::MenuSearch => &["menu search", "search menu"],
+            Self::Calendar => &["calendar", "events", "meetings"],
+            Self::JoinNextMeeting => &["join meeting", "next meeting"],
+            Self::SelectedText => &["selected text", "transform selection"],
+            Self::Notes => &["notes", "markdown notes"],
+            Self::Dictionary => &["dictionary", "define"],
+            Self::Dictation => &["dictation", "speech to text"],
+            Self::RaycastImport => &["raycast import", "raycast migration"],
+            Self::RaycastExtensions => &["raycast extensions", "raycast scripts"],
+            Self::WindowLayouts => &["window layouts", "save layout", "restore layout"],
         }
     }
 
@@ -589,7 +673,19 @@ mod tests {
                 "onboarding",
                 "profiles",
                 "webSearch",
-                "appleShortcuts"
+                "appleShortcuts",
+                "newNote",
+                "windowSearch",
+                "menuSearch",
+                "calendar",
+                "joinNextMeeting",
+                "selectedText",
+                "notes",
+                "dictionary",
+                "dictation",
+                "raycastImport",
+                "raycastExtensions",
+                "windowLayouts",
             ]
         );
     }
@@ -600,7 +696,7 @@ mod tests {
         assert!(!LauncherCommand::AppleShortcuts.is_available());
         assert_eq!(
             LauncherCommand::available().count(),
-            14,
+            26,
             "the 13 original commands (without Apple Shortcuts) and the calculator history"
         );
         assert!(LauncherCommand::CalculationHistory.is_available());
@@ -625,7 +721,7 @@ mod tests {
         assert!(!LauncherCommand::Lock.is_available_with(windows_only));
         assert_eq!(
             LauncherCommand::available_with(windows_only).count(),
-            14 + 18
+            26 + 18
         );
         assert!(
             !LauncherCommand::AppleShortcuts.is_available_with(CommandSupport {

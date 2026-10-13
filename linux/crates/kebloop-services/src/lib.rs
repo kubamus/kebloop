@@ -30,6 +30,7 @@ pub mod currency;
 pub mod error;
 pub mod file_search;
 pub mod l10n;
+pub mod notes;
 pub mod persist;
 pub mod personalization;
 pub mod quicklinks;
@@ -40,3 +41,12 @@ pub mod util;
 pub mod window_management;
 
 pub use error::ConfigError;
+
+pub mod calendar;
+pub mod raycast;
+
+pub mod window_layouts;
+
+pub mod voice_dictionary;
+
+pub mod selected_text;
