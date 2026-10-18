@@ -12,6 +12,7 @@ final class AppleShortcutsService: ObservableObject {
     @Published private(set) var selected: [AppleShortcut] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isRunning = false
+    @Published private(set) var output: String?
     @Published private(set) var runningID: String?
     @Published private(set) var errors: [String: String] = [:]
     @Published private(set) var error: String?
@@ -67,6 +68,7 @@ final class AppleShortcutsService: ObservableObject {
         guard !isRunning else { completion?("Another shortcut is already running."); return }
         guard selected.contains(where: { $0.id == id }) else { completion?("This shortcut is not selected."); return }
         if missingIDs.contains(id) { completion?(errors[id]); return }
+        output = nil
         let token = UUID(); generation = token
         let taskProcess = ShortcutProcess(); process = taskProcess
         self.completion = completion
@@ -77,7 +79,9 @@ final class AppleShortcutsService: ObservableObject {
             guard generation == token else { return }
             process = nil; runningID = nil; isRunning = false; self.completion = nil
             switch result {
-            case .success: completion?(nil)
+            case .success(let resultOutput):
+                output = resultOutput
+                completion?(nil)
             case .failure(let failure): errors[id] = failure.localizedDescription; completion?(failure.localizedDescription)
             }
         }

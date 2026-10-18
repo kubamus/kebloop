@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 private struct HelpCommand: Identifiable {
@@ -79,7 +78,7 @@ struct HelpView: View {
             }
             HStack {
                 Button(L("Replay Welcome")) { onReplayOnboarding() }
-                    .accessibilityHint(L("Review login, clipboard, and optional permission choices."))
+                    .accessibilityHint(L("Review login, clipboard, and Local Assistant requirements."))
                 Spacer()
                 Text(L("Help works offline and updates as you add links and shortcuts."))
                     .font(.caption).foregroundStyle(.secondary)
@@ -188,10 +187,11 @@ struct HelpView: View {
         case .calculationHistory: L("Browse, copy, and clear calculations you accepted.")
         case .browse: L("Search the available built-in commands, quicklinks, and selected Apple Shortcuts.")
         case .help: L("Read command examples and see which features and shortcuts are currently available.")
-        case .onboarding: L("Review the first-run choices for login startup, clipboard history, and optional Siri access.")
+        case .onboarding: L("Review login startup and clipboard history choices, and learn how to use Local Assistant.")
         case .profiles: L("Switch between saved work and personal settings profiles.")
         case .webSearch: L("Send your query to a configured web search template after you choose the result.")
         case .appleShortcuts: L("Browse the Apple Shortcuts you selected in Settings.")
+        case .chatHistory: L("Browse, continue, and remove Local Assistant conversations. Press Tab in the launcher to start a new conversation.")
         }
     }
 
@@ -214,6 +214,7 @@ struct HelpView: View {
         case .profiles: "profiles"
         case .webSearch: L("web Warsaw cafés")
         case .appleShortcuts: "shortcuts"
+        case .chatHistory: command.aliases.first ?? command.rawValue
         }
     }
 }
@@ -224,7 +225,6 @@ struct OnboardingView: View {
     var onFinish: () -> Void = {}
 
     @AppStorage("onboardingDismissed") private var onboardingDismissed = false
-    @State private var siriTrusted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -248,23 +248,11 @@ struct OnboardingView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
             }
 
-            GroupBox(L("Optional Siri permission")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L("Siri text submission can fill and send your query directly. This uses macOS Accessibility access. ChatGPT, Claude, clipboard, and local search do not need it."))
-                        .font(.callout)
-                    if siriTrusted {
-                        Label(L("Accessibility access is already enabled."), systemImage: "checkmark.circle")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Button(L("Set Up Siri Access…")) {
-                            _ = SiriPromptSender.requestPermission()
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                                NSWorkspace.shared.open(url)
-                            }
-                            siriTrusted = SiriPromptSender.isTrusted
-                        }
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+            GroupBox(L("Local Assistant")) {
+                Text(L("Local Assistant uses Apple Foundation Models on this Mac. It requires macOS 26 and Apple Intelligence. Press Tab on a search query to chat inline in Kebloop. Web search and other online tools send requests over the internet."))
+                    .font(.callout)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
             }
 
             GroupBox(L("Try these commands")) {
@@ -285,10 +273,6 @@ struct OnboardingView: View {
         }
         .padding(24)
         .frame(minWidth: 600, minHeight: 540)
-        .onAppear { siriTrusted = SiriPromptSender.isTrusted }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            siriTrusted = SiriPromptSender.isTrusted
-        }
         .onDisappear { if !onboardingDismissed { finish() } }
     }
 

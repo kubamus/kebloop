@@ -12,17 +12,17 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var title: String {
         switch self {
-        case .openai: "ChatGPT"
-        case .claude: "Claude"
-        case .local: "Siri"
+        case .openai: L("ChatGPT")
+        case .claude: L("Claude")
+        case .local: L("Local Assistant")
         }
     }
 
     var settingsTitle: String {
         switch self {
-        case .openai: "OpenAI (ChatGPT)"
-        case .claude: "Claude"
-        case .local: "Local (Siri)"
+        case .openai: L("OpenAI (ChatGPT)")
+        case .claude: L("Claude")
+        case .local: L("Local Assistant")
         }
     }
 
@@ -44,9 +44,9 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var explanation: String {
         switch self {
-        case .openai: "Opens ChatGPT with your query already filled in."
-        case .claude: "Opens Claude with your query in the link. You may need to sign in first."
-        case .local: "Sends your query directly to Siri. Siri must be enabled, and Kebloop needs Accessibility access."
+        case .openai: L("Opens ChatGPT with your query already filled in.")
+        case .claude: L("Opens Claude with your query in the link. You may need to sign in first.")
+        case .local: L("Local Assistant chats inline in Kebloop using Apple Foundation Models on macOS 26 with Apple Intelligence. Web search and other online tools send requests over the internet.")
         }
     }
 }
@@ -63,24 +63,15 @@ final class AIHandoffService: ObservableObject {
     private let defaults: UserDefaults
     private let pasteboard: NSPasteboard
     private let openURL: (URL) -> Bool
-    private let siriApplicationURL: @MainActor () -> URL?
-    private let submitSiriPrompt: @MainActor (String, URL, @escaping (String?) -> Void) -> Void
 
     init(
         defaults: UserDefaults = .standard,
         pasteboard: NSPasteboard = .general,
-        openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
-        siriApplicationURL: (@MainActor () -> URL?)? = nil,
-        submitSiriPrompt: (@MainActor (String, URL, @escaping (String?) -> Void) -> Void)? = nil
+        openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
         self.defaults = defaults
         self.pasteboard = pasteboard
         self.openURL = openURL
-        self.siriApplicationURL = siriApplicationURL ?? { Self.defaultSiriApplicationURL() }
-        let sender = SiriPromptSender()
-        self.submitSiriPrompt = submitSiriPrompt ?? { prompt, url, completion in
-            Self.defaultSubmitSiriPrompt(prompt, at: url, sender: sender, completion: completion)
-        }
 
         let storedValue = defaults.string(forKey: Self.providerStorageKey)
         let storedProvider = storedValue.flatMap(AIProvider.init(rawValue:))
@@ -90,11 +81,15 @@ final class AIHandoffService: ObservableObject {
         }
     }
 
-    /// Opens a prompt-bearing cloud URL, or fills and submits Siri’s native query field.
+    /// Opens a prompt-bearing cloud URL. Local Assistant is handled inline by the launcher.
     func handoff(_ text: String, completion: @escaping (String?) -> Void) {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else {
             completion("Enter a prompt first.")
+            return
+        }
+        guard provider != .local else {
+            completion(L("Local Assistant chat is available inline in the launcher. Press Tab on a query to open it."))
             return
         }
         guard copyPrompt(prompt) else {
@@ -111,11 +106,7 @@ final class AIHandoffService: ObservableObject {
             return
         }
 
-        guard let siriURL = siriApplicationURL() else {
-            completion("Siri isn't available on this Mac.")
-            return
-        }
-        submitSiriPrompt(prompt, siriURL, completion)
+        completion("Kebloop couldn't open \(provider.title) in your browser.")
     }
 
     private func copyPrompt(_ prompt: String) -> Bool {
@@ -123,33 +114,5 @@ final class AIHandoffService: ObservableObject {
         let wrotePrompt = pasteboard.setString(prompt, forType: .string)
         let markedTransient = pasteboard.setPropertyList("1", forType: Self.transientPasteboardType)
         return wrotePrompt && markedTransient
-    }
-
-    private static func defaultSiriApplicationURL() -> URL? {
-        let workspace = NSWorkspace.shared
-        for bundleID in ["com.apple.campo", "com.apple.Siri"] {
-            if let url = workspace.urlForApplication(withBundleIdentifier: bundleID) { return url }
-        }
-        let modern = URL(fileURLWithPath: "/System/Applications/Siri AI.app")
-        if FileManager.default.fileExists(atPath: modern.path) { return modern }
-
-        let fallback = URL(fileURLWithPath: "/System/Library/CoreServices/Siri.app")
-        return FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
-    }
-
-    private static func defaultSubmitSiriPrompt(_ prompt: String, at url: URL, sender: SiriPromptSender, completion: @escaping (String?) -> Void) {
-        guard SiriPromptSender.isTrusted else {
-            _ = SiriPromptSender.requestPermission()
-            completion("Enable Kebloop in System Settings → Privacy & Security → Device Control and Data Access (Accessibility on older macOS). If already enabled, remove and re-add this build, then restart Kebloop.")
-            return
-        }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { application, error in
-            DispatchQueue.main.async {
-                guard error == nil, let application else { completion("Kebloop couldn’t open Siri."); return }
-                sender.submit(prompt, application: application, completion: completion)
-            }
-        }
     }
 }

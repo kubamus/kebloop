@@ -18,9 +18,12 @@ final class WorkflowCommandTests: XCTestCase {
             clipboard: ClipboardHistoryStore(defaults: defaults, pasteboard: pasteboard, storageURL: historyURL),
             aliases: AppAliasStore(defaults: defaults), ai: AIHandoffService(defaults: defaults, pasteboard: pasteboard),
             personalization: PersonalizationStore(defaults: defaults), appleShortcuts: AppleShortcutsService(defaults: defaults))
-        defer { launcher.dismiss(restoreFocus: false) }
+        let notesURL = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let notes = MarkdownNoteStore(directory: notesURL)
+        launcher.noteStore = { notes }
+        defer { launcher.dismiss(restoreFocus: false); notes.flushAll(); try? FileManager.default.removeItem(at: notesURL) }
         let commands: [LauncherCommand] = [.windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText,
-            .newNote, .raycastImport, .raycastExtensions, .windowLayouts]
+            .raycastImport, .raycastExtensions, .windowLayouts]
         launcher.show()
         launcher.setQuery("")
         XCTAssertTrue(launcher.resultIdentifiers.contains("command:browse"))
@@ -36,9 +39,9 @@ final class WorkflowCommandTests: XCTestCase {
             XCTAssertEqual(invoked.last, command)
         }
         XCTAssertEqual(invoked, commands)
-        for command in [LauncherCommand.dictionary, .dictation] {
+        for (command, mode) in [(LauncherCommand.dictionary, "dictionary"), (.dictation, "dictation"), (.newNote, "notes")] {
             launcher.executeCommand(id: command.id)
-            XCTAssertEqual(launcher.currentModeID, command.id)
+            XCTAssertEqual(launcher.currentModeID, mode)
             XCTAssertTrue(launcher.isVisible)
             XCTAssertEqual(invoked, commands, "Inline tools must not request separate presenter windows")
         }

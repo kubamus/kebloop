@@ -37,9 +37,11 @@ private final class SearchField: NSTextField {
 }
 
 private enum LauncherMode: String {
-    case root, clipboard, quicklinks, webSearch, snippets, calculationHistory, notes, dictionary, dictation
+    case root, clipboard, quicklinks, webSearch, snippets, calculationHistory, notes, dictionary, dictation, localAssistant, chatHistory
     var title: String {
         switch self {
+        case .chatHistory: return L("Chat History")
+        case .localAssistant: return L("Local Assistant")
         case .notes: return L("Notes")
         case .dictionary: return L("Dictionary")
         case .dictation: return L("Dictation")
@@ -53,6 +55,8 @@ private enum LauncherMode: String {
     }
     var placeholder: String {
         switch self {
+        case .chatHistory: return L("Search conversations…")
+        case .localAssistant: return L("Ask a follow-up…  Return to send")
         case .notes: return L("Search notes…  ⌘N New Note")
         case .dictionary: return L("Type a word, then press Return…")
         case .dictation: return L("Dictation · ⌘Return Start or stop")
@@ -164,6 +168,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private let extensions: ExtensionStore
     private let aliases: AppAliasStore
     private let ai: AIHandoffService
+    private let assistantTools = LocalAssistantTools()
+    private let assistantOverride: LocalAssistantService?
+    private(set) lazy var localAssistant = assistantOverride ?? LocalAssistantService(tools: assistantTools)
     private let aiButton = NSButton(title: "", target: nil, action: nil)
     private let clearHistoryButton = NSButton(title: L("Clear…"), target: nil, action: nil)
     private var isConfirmingClear = false
@@ -225,8 +232,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private var outsideMonitor: Any?
     private var message: String?
 
-    init(index: ApplicationIndex, quicklinks: QuicklinkStore, clipboard: ClipboardHistoryStore, aliases: AppAliasStore, ai: AIHandoffService, personalization: PersonalizationStore? = nil, appleShortcuts: AppleShortcutsService? = nil, snippets: SnippetStore? = nil, scripts: ScriptCommandStore? = nil, extensions: ExtensionStore? = nil, currencyRates: CurrencyRateStore? = nil, calculationHistory: CalculationHistoryStore? = nil, launchApplication: ((IndexedApplication, @escaping (Error?) -> Void) -> Void)? = nil, dictationService: OnDeviceDictationService? = nil, lookupDefinition: @escaping @Sendable (String) -> String? = { DictionaryLookupService.definition(for: $0) }) {
+    init(index: ApplicationIndex, quicklinks: QuicklinkStore, clipboard: ClipboardHistoryStore, aliases: AppAliasStore, ai: AIHandoffService, personalization: PersonalizationStore? = nil, appleShortcuts: AppleShortcutsService? = nil, snippets: SnippetStore? = nil, scripts: ScriptCommandStore? = nil, extensions: ExtensionStore? = nil, currencyRates: CurrencyRateStore? = nil, calculationHistory: CalculationHistoryStore? = nil, launchApplication: ((IndexedApplication, @escaping (Error?) -> Void) -> Void)? = nil, dictationService: OnDeviceDictationService? = nil, localAssistant: LocalAssistantService? = nil, lookupDefinition: @escaping @Sendable (String) -> String? = { DictionaryLookupService.definition(for: $0) }) {
         self.index = index
+        self.assistantOverride = localAssistant
         self.inlineDictation = dictationService
         self.lookupDefinition = lookupDefinition
         self.currencyRates = currencyRates ?? CurrencyRateStore()
@@ -243,6 +251,14 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         self.appleShortcuts = appleShortcuts ?? AppleShortcutsService()
         panel = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 360), styleMask: [.borderless], backing: .buffered, defer: false)
         super.init()
+        assistantTools.catalogHandler = { [weak self] query in
+            guard let self else { throw AutomationFailure.cancelled }
+            return self.assistantCatalog(query: query)
+        }
+        assistantTools.executeHandler = { [weak self] id, input in
+            guard let self else { throw AutomationFailure.cancelled }
+            return try await self.executeAssistantAction(id: id, input: input)
+        }
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
@@ -324,7 +340,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 if LauncherKeyboard.isActionShortcut(event) { self.showActions(); return nil }
                 return event
             }
-            if self.mode == .dictionary || self.mode == .dictation {
+            if self.mode == .dictionary || self.mode == .dictation || self.mode == .localAssistant || self.mode == .chatHistory {
                 return self.handleUtilityKey(event) ? nil : event
             }
             if LauncherKeyboard.isActionShortcut(event) { self.showActions(); return nil }
@@ -344,7 +360,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
                self.mode == .root,
                (self.input.currentEditor() as? NSTextView)?.hasMarkedText() != true,
-               !self.input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+               (self.ai.provider == .local || !self.input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                 self.askAI()
                 return nil
             }
@@ -655,7 +671,10 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     func restorePreviousFocus() {
         previousApp?.activate(options: [])
     }
-    @objc private func goBack() { enter(.root) }
+    @objc private func goBack() {
+        if mode == .localAssistant { localAssistant.cancel() }
+        enter(.root)
+    }
     private func enter(_ next: LauncherMode) {
         guard saveNotes() else { return }
         noteEditorSession = nil
@@ -797,6 +816,38 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     func handleUtilityKey(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == 48, modifiers.isEmpty, !NSApp.isFullKeyboardAccessEnabled,
+           mode == .localAssistant || mode == .chatHistory {
+            showLocalAssistant(query: input.stringValue)
+            return true
+        }
+        if mode == .localAssistant {
+            if event.keyCode == 53 {
+                if localAssistant.isResponding { localAssistant.cancel() }
+                else { enter(.root) }
+                return true
+            }
+            if [36, 76].contains(event.keyCode), modifiers.isEmpty,
+               panel.firstResponder === input.currentEditor() || panel.firstResponder === input {
+                submitLocalAssistantPrompt()
+                return true
+            }
+            return false
+        }
+        if mode == .chatHistory, modifiers.isEmpty,
+           panel.firstResponder === input.currentEditor() || panel.firstResponder === input {
+            if [125, 126].contains(event.keyCode) {
+                selection = max(0, min(matchingConversations.count - 1, selection + (event.keyCode == 125 ? 1 : -1)))
+                renderUtility()
+                return true
+            }
+            if [36, 76].contains(event.keyCode) {
+                if matchingConversations.indices.contains(selection) {
+                    resumeLocalAssistantConversation(id: matchingConversations[selection].id)
+                }
+                return true
+            }
+        }
         if event.keyCode == 53 {
             if mode == .dictation, inlineDictation?.state != .idle { inlineDictation?.cancel() }
             else { enter(.root) }
@@ -842,6 +893,16 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                     guard let id = session?.selectedNoteID else { return }
                     self?.performNoteAction(.deleteNote, id: id)
                 }, session: session))
+        } else if mode == .chatHistory {
+            view = AnyView(LocalAssistantHistoryView(history: localAssistant.history, query: input.stringValue,
+                selectedID: matchingConversations.indices.contains(selection) ? matchingConversations[selection].id : nil,
+                onOpen: { [weak self] in self?.resumeLocalAssistantConversation(id: $0) },
+                onDelete: { [weak self] in self?.removeLocalAssistantConversation(id: $0) }))
+        } else if mode == .localAssistant {
+            if utilityHostingView != nil { resizeUtility(); return }
+            view = AnyView(LocalAssistantView(service: localAssistant, onSend: { [weak self] in
+                self?.submitLocalAssistantPrompt()
+            }))
         } else if mode == .dictionary {
             view = AnyView(LauncherDictionaryView(word: input.stringValue, definition: dictionaryDefinition,
                 loading: dictionaryLoading, lookedUp: dictionaryLookedUp, onLookup: { [weak self] in self?.lookupDictionary() }))
@@ -849,6 +910,11 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             if utilityHostingView != nil { resizeUtility(); return }
             view = AnyView(LauncherDictationView(service: service, application: previousApp, onInsert: { [weak self] in self?.insertDictation() }))
         } else { return }
+        if mode == .chatHistory, let hosting = utilityHostingView as? NSHostingView<AnyView> {
+            hosting.rootView = view
+            resizeUtility()
+            return
+        }
         utilityHostingView?.removeFromSuperview()
         let hosting = NSHostingView(rootView: view)
         hosting.translatesAutoresizingMaskIntoConstraints = false
@@ -886,7 +952,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 let rankedApps = rank(appResults, query: "")
                 // Keep the empty panel bounded as the registry grows; search and Browse Commands expose everything.
                 let suggestions: [LauncherResult] = config.commandsEnabled
-                    ? [LauncherCommand.clipboard, .quicklinks, .snippets, .emoji, .notes, .calendar, .dictionary, .dictation, .browse, .settings].map(LauncherResult.command)
+                    ? [LauncherCommand.clipboard, .quicklinks, .snippets, .emoji, .notes, .calendar, .dictionary, .dictation, .chatHistory, .browse, .settings].map(LauncherResult.command)
                     : []
                 let favorites = pinnedResults(from: appResults + linkResults + commands + shortcutResults + snippetResults)
                 if config.emptyMode == "favorites" { results = favorites + suggestions.filter { !favorites.map(\.id).contains($0.id) } }
@@ -906,7 +972,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 case .none, .incomplete: break
                 }
             }
-        case .dictionary, .dictation: results = []
+        case .dictionary, .dictation, .localAssistant, .chatHistory: results = []
         case .notes:
             let matches = loadedNotes?.notes.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.contents.localizedCaseInsensitiveContains(query) } ?? []
             results = matches.map(LauncherResult.note) + [.command(.newNote)]
@@ -974,7 +1040,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         let interval = OSSignpostID(log: Self.performanceLog)
         os_signpost(.begin, log: Self.performanceLog, name: "Render rows", signpostID: interval)
         defer { os_signpost(.end, log: Self.performanceLog, name: "Render rows", signpostID: interval) }
-        let isUtility = mode == .dictionary || mode == .dictation || noteEditorSession != nil
+        let isUtility = mode == .dictionary || mode == .dictation || mode == .localAssistant || mode == .chatHistory || noteEditorSession != nil
         utilityHost.isHidden = !isUtility
         resultsBody.isHidden = isUtility
         notePreviewHost.isHidden = mode != .notes
@@ -994,9 +1060,9 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         backButton.isHidden = mode == .root
         clearHistoryButton.isHidden = mode != .clipboard
         clearHistoryButton.isEnabled = !clipboard.items.isEmpty
-        aiButton.isHidden = mode != .root || input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        aiButton.isHidden = mode != .root || (ai.provider != .local && input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         aiButton.title = "Ask \(ai.provider.title)" + (personalization.settings.showShortcutHints ? " ⇥" : "")
-        aiButton.setAccessibilityLabel("Open \(ai.provider.title) with your query")
+        aiButton.setAccessibilityLabel(ai.provider == .local ? "Chat with Local Assistant" : "Open \(ai.provider.title) with your query")
         aiButton.toolTip = "Send query to \(ai.provider.title) (Tab)"
         if results.isEmpty {
             let label = NSTextField(labelWithString: message ?? emptyMessage)
@@ -1217,6 +1283,199 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         NSAccessibility.post(element: input, notification: .announcementRequested, userInfo: [
             .announcement: row.accessibilityLabel() ?? "", .priority: NSAccessibilityPriorityLevel.medium.rawValue
         ])
+    }
+
+    // Use the same live stores and enabled flags as the launcher. Never let the
+    // model invent an executable, application path, or disabled command.
+    func assistantCatalog(query: String) -> String {
+        struct Action: Encodable {
+            let id: String
+            let title: String
+            var application: AssistantApplicationContext? = nil
+        }
+        var entries: [(String, String)] = []
+        let config = personalization.settings
+        if config.commandsEnabled {
+            entries += LauncherCommand.allCases.map { ($0.id, $0.title) }
+            entries += scripts.commands.filter(\.enabled).map { ($0.commandID, $0.title + " (input: optional JSON array of argument strings)") }
+            entries += extensions.manifests.filter(\.enabled).map { ($0.commandID, $0.name) }
+            entries += snippets.snippets.map { ("snippet:" + $0.id, $0.name) }
+            entries += appleShortcuts.selected.map { ("apple:" + $0.id, $0.name) }
+            entries += [("calculate", "Calculate an expression; input is the expression"),
+                        ("dictionary.lookup", "Look up a word; input is the word"),
+                        ("notes.search", "Search note contents; input is the search text"),
+                        ("notes.create", "Create a Markdown note; input is its full content")]
+        }
+        if config.linksEnabled { entries += quicklinks.links.map { ("link:" + $0.id, $0.name) } }
+        // Supply only relevant app identities; the local model has a small context.
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ignoredWords: Set<String> = ["open", "launch", "run", "start", "please", "can", "you", "the", "app", "application"]
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init).filter { !ignoredWords.contains($0) }
+        let matches = entries.filter { entry in
+            query.isEmpty || words.allSatisfy { entry.0.localizedCaseInsensitiveContains($0) || entry.1.localizedCaseInsensitiveContains($0) }
+        }
+        var actions = matches.prefix(30).map { Action(id: $0.0, title: $0.1) }
+        if config.appsEnabled, !query.isEmpty {
+            actions += assistantApplicationCandidates(query: words.joined(separator: " ")).map { app in
+                Action(id: "app:" + app.id, title: app.name,
+                       application: AssistantApplicationContext(app: app, customAlias: aliases.alias(for: app)))
+            }
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        while !actions.isEmpty {
+            if let data = try? encoder.encode(actions), data.count <= 5_500 { return String(decoding: data, as: UTF8.self) }
+            actions.removeLast()
+        }
+        return "[]"
+    }
+
+    private func assistantApplicationCandidates(query: String) -> [IndexedApplication] {
+        guard personalization.settings.appsEnabled else { return [] }
+        let available = index.applications.filter { !personalization.settings.hiddenApps.contains($0.path) }
+        let entries = available.map { app in
+            AppSearchEntry(id: app.id, name: app.name, path: app.path,
+                           aliases: AssistantApplicationIdentity(app: app, customAlias: aliases.alias(for: app)).aliases
+                            + [app.bundleIdentifier].compactMap { $0 })
+        }
+        let ignoredWords: Set<String> = ["open", "launch", "run", "start", "please", "can", "you", "the", "app", "application"]
+        let terms = query.split(whereSeparator: \.isWhitespace).filter { !ignoredWords.contains($0.lowercased()) }.joined(separator: " ")
+        let ranked = search.ranked(query: terms, entries: entries)
+        let byID = Dictionary(uniqueKeysWithValues: available.map { ($0.id, $0) })
+        return ranked.prefix(10).compactMap { byID[$0.id] }
+    }
+
+    private func assistantApplicationContext(query: String) -> String {
+        var context = assistantApplicationCandidates(query: query).map {
+            AssistantApplicationContext(app: $0, customAlias: aliases.alias(for: $0))
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        while !context.isEmpty {
+            if let data = try? encoder.encode(context), data.count <= 5_500 { return String(decoding: data, as: UTF8.self) }
+            context.removeLast()
+        }
+        return "[]"
+    }
+
+    func executeAssistantAction(id: String, input text: String) async throws -> String {
+        try Task.checkCancellation()
+        let config = personalization.settings
+        if id == "application.search" {
+            guard config.appsEnabled else { throw AutomationFailure.invalid("Application search is disabled in Settings.") }
+            return assistantApplicationContext(query: text)
+        }
+        if id == "application.open" {
+            guard config.appsEnabled else { throw AutomationFailure.invalid("Application search is disabled in Settings.") }
+            let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: #"\.app$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            guard !name.isEmpty else { throw AutomationFailure.invalid("Provide an application name or alias.") }
+            let available = index.applications.filter { !config.hiddenApps.contains($0.path) }
+            let matches = AssistantApplicationIdentity.resolve(query: name, applications: available, customAliases: aliases.aliases)
+            guard matches.count == 1, let app = matches.first else {
+                let candidates = matches.isEmpty ? assistantApplicationCandidates(query: name) : matches
+                let context = candidates.prefix(5).map { app in
+                    "\(app.name) (\(app.path)); aliases: " + AssistantApplicationIdentity(app: app, customAlias: aliases.alias(for: app)).aliases.joined(separator: ", ")
+                }.joined(separator: "\n")
+                throw AutomationFailure.invalid((matches.isEmpty ? "No exact application identity matches \(name)." : "Multiple applications match \(name). Ask which one the user means.")
+                    + " Use find_applications for installed app names, paths, bundle identities, and aliases.\n" + context)
+            }
+            return try await executeAssistantAction(id: "app:" + app.id, input: "")
+        }
+        if config.appsEnabled, id.hasPrefix("app:"),
+           let app = index.applications.first(where: { "app:" + $0.id == id && !config.hiddenApps.contains($0.path) }) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                launchApplication(app) { error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume() }
+                }
+            }
+            return "Opened \(app.name)."
+        }
+        if config.linksEnabled, let link = quicklinks.links.first(where: { "link:" + $0.id == id }) {
+            guard let url = link.resolvedURL(argument: text), NSWorkspace.shared.open(url) else {
+                throw AutomationFailure.invalid("Could not open this quicklink.")
+            }
+            return "Opened \(link.name)."
+        }
+        guard config.commandsEnabled else { throw AutomationFailure.invalid("Kebloop commands are disabled in Settings.") }
+        switch id {
+        case "calculate":
+            await currencyRates.refreshIfNeeded(for: text)
+            guard case .result(let result) = calculator.evaluate(text, currencyRates: currencyRates.snapshots) else {
+                throw AutomationFailure.invalid("Could not calculate that expression.")
+            }
+            return result.clipboard
+        case "dictionary.lookup":
+            let lookup = lookupDefinition
+            return await Task.detached { lookup(text) ?? "No definition found." }.value
+        case "notes.search":
+            connectNotes()
+            return String((loadedNotes?.notes.filter {
+                text.isEmpty || $0.title.localizedCaseInsensitiveContains(text) || $0.contents.localizedCaseInsensitiveContains(text)
+            }.prefix(5).map { "\($0.title)\n\($0.contents.prefix(1000))" }.joined(separator: "\n\n") ?? "").prefix(5000))
+        case "notes.create":
+            connectNotes()
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let note = loadedNotes?.create(contents: text) else {
+                throw AutomationFailure.invalid(loadedNotes?.error ?? "Provide note content.")
+            }
+            return "Created note: \(note.title)"
+        default: break
+        }
+        if let script = scripts.commands.first(where: { $0.commandID == id && $0.enabled }) {
+            let arguments: [String]
+            if text.isEmpty { arguments = [] }
+            else if let parsed = try? JSONDecoder().decode([String].self, from: Data(text.utf8)),
+                    parsed.allSatisfy({ !$0.contains("\0") }) { arguments = parsed }
+            else { throw AutomationFailure.invalid("Script input must be a JSON array of argument strings, or empty.") }
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    scripts.run(id: script.id, arguments: arguments) { error in
+                        if let error { continuation.resume(throwing: AutomationFailure.invalid(error)) }
+                        else { continuation.resume() }
+                    }
+                }
+            } onCancel: { [weak self] in Task { @MainActor in self?.scripts.cancel() } }
+            return String((scripts.output?.stdout ?? "Script completed.").prefix(5000))
+        }
+        if let shortcut = appleShortcuts.selected.first(where: { "apple:" + $0.id == id }) {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    appleShortcuts.run(id: shortcut.id, input: text.isEmpty ? nil : text) { error in
+                        if let error { continuation.resume(throwing: AutomationFailure.invalid(error)) }
+                        else { continuation.resume() }
+                    }
+                }
+            } onCancel: { [weak self] in Task { @MainActor in self?.appleShortcuts.cancel() } }
+            return "Completed Shortcut: \(shortcut.name).\n" + String((appleShortcuts.output ?? "").prefix(5000))
+        }
+        if let command = LauncherCommand(rawValue: id) {
+            if let action = command.systemAction {
+                try await SystemActionService.perform(action)
+                return "Requested \(command.title). Any macOS confirmation still requires the user."
+            }
+            if let action = command.windowAction {
+                try windowManagement.perform(action, application: previousApp)
+                return "Completed \(command.title)."
+            }
+            if command == .shutdown {
+                try ShutdownService.requestConfirmation()
+                return "Opened the macOS shutdown confirmation. The user must confirm."
+            }
+            executeCommand(id: id)
+            if !text.isEmpty, [.dictionary, .notes, .webSearch, .clipboard, .snippets, .quicklinks].contains(command) { setQuery(text) }
+            return "Opened \(command.title) workflow; the user can continue there."
+        }
+        if let manifest = extensions.manifests.first(where: { $0.commandID == id && $0.enabled }) {
+            onExtension?(manifest)
+            return "Opened \(manifest.name) extension workflow; the user can continue there."
+        }
+        if snippets.snippets.contains(where: { "snippet:" + $0.id == id }) {
+            executeCommand(id: id)
+            return "Opened the snippet workflow."
+        }
+        throw AutomationFailure.invalid("Unknown or disabled action. Search the action catalog for its exact ID.")
     }
 
     func executeCommand(id: String) {
@@ -1514,9 +1773,58 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
         focusInput()
     }
 
+    func showLocalAssistant(query: String = "") {
+        guard saveNotes() else { return }
+        if !panel.isVisible { show() }
+        localAssistant.reset()
+        enter(.localAssistant)
+        input.stringValue = query
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            submitLocalAssistantPrompt()
+        }
+        focusInput()
+    }
+
+    func showChatHistory() {
+        guard saveNotes() else { return }
+        if !panel.isVisible { show() }
+        localAssistant.cancel()
+        enter(.chatHistory)
+        focusInput()
+    }
+
+    private var matchingConversations: [LocalAssistantConversation] {
+        LocalAssistantHistoryView.matches(localAssistant.history.conversations, query: input.stringValue)
+    }
+
+    func resumeLocalAssistantConversation(id: UUID) {
+        guard saveNotes(), localAssistant.resumeConversation(id: id) else { return }
+        if !panel.isVisible { show() }
+        enter(.localAssistant)
+        focusInput()
+    }
+
+    func removeLocalAssistantConversation(id: UUID) {
+        localAssistant.removeConversation(id: id)
+        if mode == .chatHistory {
+            selection = min(selection, max(0, matchingConversations.count - 1))
+            renderUtility()
+            focusInput()
+        }
+    }
+
+    private func submitLocalAssistantPrompt() {
+        guard !localAssistant.isResponding else { return }
+        let prompt = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        localAssistant.send(prompt)
+        if localAssistant.isResponding { input.stringValue = "" }
+    }
+
     @objc private func askAI() {
-        guard mode == .root, !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        onAI?(input.stringValue)
+        guard mode == .root else { return }
+        if ai.provider == .local { showLocalAssistant(query: input.stringValue) }
+        else { onAI?(input.stringValue) }
     }
     func showHandoffError(query: String, error: String) {
         show()
@@ -1553,7 +1861,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
     private var emptyMessage: String {
         switch mode {
         case .notes: return L("No notes yet. Press ⌘N to create one.")
-        case .dictionary, .dictation: return ""
+        case .dictionary, .dictation, .localAssistant, .chatHistory: return ""
         case .calculationHistory: return L("Copy a calculation to start your history")
         case .snippets: return L("Add snippets in Settings")
         case .root: return files.isSearching ? "Searching files…" : (index.isRefreshing ? "Finding your apps…" : "No results")
@@ -1587,6 +1895,13 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     var isVisible: Bool { panel.isVisible }
     func performSelected() {
+        if mode == .chatHistory {
+            if matchingConversations.indices.contains(selection) {
+                resumeLocalAssistantConversation(id: matchingConversations[selection].id)
+            }
+            return
+        }
+        if mode == .localAssistant { submitLocalAssistantPrompt(); return }
         if mode == .dictionary { lookupDictionary(); return }
         if mode == .dictation { toggleDictation(); return }
         guard panel.isVisible, results.indices.contains(selection) else { return }
@@ -1628,6 +1943,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
                 let word = LauncherUtilityQuery.dictionaryWord(in: input.stringValue)
                 enter(.dictionary)
                 if let word { setQuery(word); lookupDictionary() }
+            case .chatHistory: showChatHistory()
             case .dictation: enter(.dictation)
             case .newNote: createNote()
             case .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .raycastImport, .raycastExtensions, .windowLayouts: onCommand?(command)

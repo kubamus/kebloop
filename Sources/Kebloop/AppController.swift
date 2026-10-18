@@ -188,6 +188,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return false
     }
     private func sendToAI(_ query: String) {
+        if ai.provider == .local { launcher.showLocalAssistant(query: query); return }
         launcher.dismiss(restoreFocus: false)
         ai.handoff(query) { [weak self] error in
             if let error { self?.launcher.showHandoffError(query: query, error: error) }
@@ -261,7 +262,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let service = SelectedTextActionsService()
             automationWindow(title: command.title, view: SelectedTextActionsView(application: target, service: service), onClose: { service.cancelTransform() })
         case .newNote: launcher.createNote()
-        case .notes, .dictionary, .dictation: launcher.executeCommand(id: command.id)
+        case .notes, .dictionary, .dictation, .chatHistory: launcher.executeCommand(id: command.id)
         case .raycastImport:
             automationWindow(title: command.title, view: RaycastMigrationView(snippets: snippets, quicklinks: quicklinks))
         case .raycastExtensions:

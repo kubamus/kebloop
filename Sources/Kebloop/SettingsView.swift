@@ -40,7 +40,6 @@ struct SettingsView: View {
     @State private var recordingLauncherShortcut = false
     @State private var clearConfirmation = false
     @State private var resetSearchConfirmation = false
-    @State private var siriTrusted = false
     @State private var folderFeedback: String?
     @State private var hiddenAppFeedback: String?
     @State private var pathDraft = ""
@@ -88,7 +87,6 @@ struct SettingsView: View {
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 820, minHeight: 580)
         .preferredColorScheme(settingsColorScheme)
-        .onAppear { siriTrusted = SiriPromptSender.isTrusted }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("KebloopSettingsTab"))) { notification in
             guard let tab = notification.object as? String else { return }
             if let section = SettingsSection(rawValue: tab) { selectedSection = section }
@@ -102,9 +100,6 @@ struct SettingsView: View {
             linkTarget = link.target
             linkKeyword = link.keyword
             linkError = nil
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            siriTrusted = SiriPromptSender.isTrusted
         }
         .onDisappear { stopAllRecordings() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in
@@ -229,19 +224,8 @@ struct SettingsView: View {
                     ForEach(AIProvider.allCases) { provider in Text(provider.settingsTitle).tag(provider) }
                 }
                 Text(ai.provider.explanation).font(.caption).foregroundStyle(.secondary)
-                Text(L("Type a query in the launcher, then press Tab. ChatGPT opens with the query filled in; Siri receives and submits it directly."))
+                Text(L("Type a query in the launcher, then press Tab to open the selected provider. Local Assistant opens an inline chat; web tools send requests online."))
                     .font(.caption).foregroundStyle(.secondary)
-                if ai.provider == .local {
-                    if siriTrusted { Label(L("Siri automation is enabled."), systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary) }
-                    else {
-                        Button(L("Allow Siri Automation…")) {
-                            _ = SiriPromptSender.requestPermission()
-                            siriTrusted = SiriPromptSender.isTrusted
-                            openAccessibilitySettings()
-                        }
-                        .accessibilityHint(L("Opens macOS privacy settings so Kebloop can send text to Siri."))
-                    }
-                }
                 }
             }
             Section(L("Applications")) {
@@ -1062,12 +1046,6 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
                 Button(L("Cancel"), action: cancel)
             }
-        }
-    }
-
-    private func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
         }
     }
 

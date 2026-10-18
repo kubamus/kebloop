@@ -15,11 +15,11 @@ Open apps, find files, run calculations, and reach your clipboard, quicklinks, s
 - Clipboard history for text, images, and rich text, with pins and privacy controls.
 - Quicklinks, reusable snippets, and a searchable emoji picker.
 - App controls, system actions, and window management, depending on your desktop.
-- AI handoff to ChatGPT or Claude, plus Siri on macOS.
+- Inline Local Assistant chat with Apple Foundation Models on macOS 26 with Apple Intelligence, plus prompt handoff to ChatGPT or Claude. Each Tab press starts a fresh conversation; use the Chat History command to browse, continue, or remove saved conversations.
 - macOS window/menu search, meeting commands, selected-text tools, Markdown notes, dictionary, and on-device dictation.
 - Raycast JSON export migration, script compatibility, and saved window layouts on macOS.
 
-Core features run locally without a Kebloop account. Currency conversions fetch and cache exchange rates; AI handoff sends your query to the provider you choose.
+Core features run locally without a Kebloop account. Local Assistant uses Apple Foundation Models on this Mac; web search and other online tools send requests over the internet. ChatGPT and Claude receive queries when selected.
 
 ## Build and install
 
@@ -31,6 +31,10 @@ Core features run locally without a Kebloop account. Currency conversions fetch 
 On macOS, press **Option-Space** to open the launcher. On Linux, bind your preferred shortcut to `kebloop toggle`; see the [Linux shortcut guide](linux/README.md#bind-the-launcher-shortcut).
 
 Type to search, use **Up/Down** to select a result, **Return** to open it or copy a calculation, and **Escape** to close. Search for **Clipboard History**, **Quicklinks**, **Emoji & Symbols**, or **Open Settings** to open a command.
+
+Local Assistant can check current weather and forecasts by city, search the web, and read public pages and follow their links. Weather uses Open-Meteo; weather and web tools make online requests.
+
+With Local Assistant selected under Settings → AI provider, each press of **Tab** starts a new conversation. Search for **Chat History** to browse, continue, and remove saved conversations.
 
 ## Documentation
 

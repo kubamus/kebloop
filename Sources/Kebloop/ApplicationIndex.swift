@@ -6,6 +6,26 @@ import KebloopCore
 struct IndexedApplication: Codable, Hashable, Identifiable, Sendable {
     let name: String
     let path: String
+    let bundleIdentifier: String?
+    let displayName: String?
+    let bundleName: String?
+    let executableName: String?
+
+    init(
+        name: String,
+        path: String,
+        bundleIdentifier: String? = nil,
+        displayName: String? = nil,
+        bundleName: String? = nil,
+        executableName: String? = nil
+    ) {
+        self.name = name
+        self.path = path
+        self.bundleIdentifier = bundleIdentifier
+        self.displayName = displayName
+        self.bundleName = bundleName
+        self.executableName = executableName
+    }
 
     var id: String { path }
     var url: URL { URL(fileURLWithPath: path) }
@@ -178,11 +198,20 @@ final class ApplicationIndex: ObservableObject {
                 return
             }
             let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-                ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
-            let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-                .nilIfEmpty ?? standardizedURL.deletingPathExtension().lastPathComponent
+            let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+            let bundleIdentifier = bundle?.bundleIdentifier
+            let executableName = bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String
+            let name = Self.nonempty(displayName) ?? Self.nonempty(bundleName)
+                ?? standardizedURL.deletingPathExtension().lastPathComponent
 
-            applicationsByPath[path] = IndexedApplication(name: name, path: path)
+            applicationsByPath[path] = IndexedApplication(
+                name: name,
+                path: path,
+                bundleIdentifier: Self.nonempty(bundleIdentifier),
+                displayName: Self.nonempty(displayName),
+                bundleName: Self.nonempty(bundleName),
+                executableName: Self.nonempty(executableName)
+            )
         }
 
         for root in roots {
@@ -246,6 +275,13 @@ final class ApplicationIndex: ObservableObject {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Kebloop", isDirectory: true)
             .appendingPathComponent("application-index.json", isDirectory: false)
+    }
+
+    private nonisolated static func nonempty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }
 

@@ -38,6 +38,13 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(Set(LauncherCommand.allCases.map(\.id)).count, LauncherCommand.allCases.count)
         XCTAssertTrue(LauncherCommand.allCases.allSatisfy { !$0.title.isEmpty && !$0.symbol.isEmpty && !$0.aliases.isEmpty })
     }
+
+    func testChatHistoryCommandMetadata() {
+        XCTAssertEqual(LauncherCommand.chatHistory.id, "chatHistory")
+        XCTAssertEqual(LauncherCommand.chatHistory.title, L("Chat History"))
+        XCTAssertEqual(LauncherCommand.chatHistory.symbol, "bubble.left.and.bubble.right")
+        XCTAssertEqual(LauncherCommand.chatHistory.aliases, ["chat history", "conversations", "assistant history", "historia czatów", "rozmowy"])
+    }
 }
 
 extension CommandRegistryTests {

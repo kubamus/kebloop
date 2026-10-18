@@ -7,7 +7,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     case newNote, windowSearch, menuSearch, calendar, joinNextMeeting, selectedText, notes, dictionary, dictation, raycastImport, raycastExtensions, windowLayouts
     case lock, sleep, restart, logOut, toggleMute, toggleAppearance, leftHalf, rightHalf, maximizeWindow, centerWindow, restoreWindow, nextDisplay, calculationHistory
     case topHalf, bottomHalf, topLeftQuarter, topRightQuarter, bottomLeftQuarter, bottomRightQuarter, leftThird, centerThird, rightThird, leftTwoThirds, rightTwoThirds, previousDisplay
-    case snippets, scripts, extensions, clipboard, quicklinks, emoji, settings, shutdown, browse, help, onboarding, profiles, webSearch, appleShortcuts
+    case snippets, scripts, extensions, clipboard, quicklinks, emoji, settings, shutdown, browse, help, onboarding, profiles, webSearch, appleShortcuts, chatHistory
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -63,6 +63,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
         case .profiles: L("Profiles")
         case .webSearch: L("Web Search")
         case .appleShortcuts: L("Apple Shortcuts")
+        case .chatHistory: L("Chat History")
         }
     }
     var symbol: String {
@@ -119,6 +120,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
         case .profiles: "person.crop.circle"
         case .webSearch: "globe"
         case .appleShortcuts: "square.stack.3d.up"
+        case .chatHistory: "bubble.left.and.bubble.right"
         }
     }
     var aliases: [String] {
@@ -175,6 +177,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
         case .profiles: ["profile", "przełącz profil", "profiles", "switch profile"]
         case .webSearch: ["szukaj w sieci", "wyszukiwarka", "web search", "search web"]
         case .appleShortcuts: ["skróty", "automatyzacja", "apple shortcuts", "shortcuts", "automation"]
+        case .chatHistory: ["chat history", "conversations", "assistant history", "historia czatów", "rozmowy"]
         }
     }
     var systemAction: SystemActionService.Action? {

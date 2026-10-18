@@ -10,10 +10,12 @@ final class AIHandoffTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(AIProvider.claude.websiteURL).absoluteString, "https://claude.ai/new")
         XCTAssertNil(AIProvider.local.websiteURL)
         XCTAssertEqual(AIProvider.openai.settingsTitle, "OpenAI (ChatGPT)")
-        XCTAssertEqual(AIProvider.local.settingsTitle, "Local (Siri)")
-        XCTAssertTrue(AIProvider.openai.explanation.contains("filled in"))
-        XCTAssertTrue(AIProvider.claude.explanation.contains("query in the link"))
-        XCTAssertTrue(AIProvider.local.explanation.contains("Accessibility"))
+        XCTAssertEqual(AIProvider.local.rawValue, "local")
+        XCTAssertEqual(AIProvider.local.title, L("Local Assistant"))
+        XCTAssertEqual(AIProvider.local.settingsTitle, L("Local Assistant"))
+        XCTAssertEqual(AIProvider.openai.explanation, L("Opens ChatGPT with your query already filled in."))
+        XCTAssertEqual(AIProvider.claude.explanation, L("Opens Claude with your query in the link. You may need to sign in first."))
+        XCTAssertEqual(AIProvider.local.explanation, L("Local Assistant chats inline in Kebloop using Apple Foundation Models on macOS 26 with Apple Intelligence. Web search and other online tools send requests over the internet."))
     }
 
     func testProviderPreferencePersistsAndInvalidValueFallsBackToOpenAI() throws {
@@ -27,6 +29,9 @@ final class AIHandoffTests: XCTestCase {
 
         service.provider = .claude
         XCTAssertEqual(AIHandoffService(defaults: defaults).provider, .claude)
+        service.provider = .local
+        XCTAssertEqual(defaults.string(forKey: AIHandoffService.providerStorageKey), "local")
+        XCTAssertEqual(AIHandoffService(defaults: defaults).provider, .local)
     }
 
     func testCloudHandoffCopiesTrimmedPromptMarksItTransientAndOpensSite() throws {
@@ -73,57 +78,30 @@ final class AIHandoffTests: XCTestCase {
         XCTAssertNil(pasteboard.string(forType: .string))
     }
 
-    func testLocalProviderSendsPromptToResolvedSiriApp() throws {
+    func testLocalProviderDirectsToInlineChatWithoutHandoffOrClipboardMutation() throws {
         let (defaults, suite) = try makeDefaults()
         let pasteboard = NSPasteboard(name: NSPasteboard.Name(suite))
         defer {
             pasteboard.releaseGlobally()
             defaults.removePersistentDomain(forName: suite)
         }
-        let fakeSiriURL = URL(fileURLWithPath: "/Applications/Fake Siri.app")
-        var openedURL: URL?
-        var submittedPrompt: String?
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("leave this text alone", forType: .string))
+        var openedURLs: [URL] = []
         let service = AIHandoffService(
             defaults: defaults,
             pasteboard: pasteboard,
-            siriApplicationURL: { fakeSiriURL },
-            submitSiriPrompt: { prompt, url, completion in
-                submittedPrompt = prompt
-                openedURL = url
-                completion(nil)
-            }
-        )
-        service.provider = .local
-        let completed = expectation(description: "Siri handoff completes")
-
-        service.handoff("summarize this") { error in
-            XCTAssertNil(error)
-            completed.fulfill()
-        }
-
-        wait(for: [completed], timeout: 1)
-        XCTAssertEqual(openedURL, fakeSiriURL)
-        XCTAssertEqual(submittedPrompt, "summarize this")
-        XCTAssertEqual(pasteboard.string(forType: .string), "summarize this")
-    }
-
-    func testSiriSubmissionErrorIsReturnedToLauncher() throws {
-        let (defaults, suite) = try makeDefaults()
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name(suite))
-        defer {
-            pasteboard.releaseGlobally()
-            defaults.removePersistentDomain(forName: suite)
-        }
-        let service = AIHandoffService(
-            defaults: defaults,
-            pasteboard: pasteboard,
-            siriApplicationURL: { URL(fileURLWithPath: "/System/Applications/Siri AI.app") },
-            submitSiriPrompt: { _, _, completion in completion("Accessibility required") }
+            openURL: { openedURLs.append($0); return true }
         )
         service.provider = .local
         var result: String?
-        service.handoff("What is 2 plus 2?") { result = $0 }
-        XCTAssertEqual(result, "Accessibility required")
+
+        service.handoff("summarize this") { result = $0 }
+
+        XCTAssertEqual(result, L("Local Assistant chat is available inline in the launcher. Press Tab on a query to open it."))
+        XCTAssertTrue(openedURLs.isEmpty)
+        XCTAssertEqual(pasteboard.string(forType: .string), "leave this text alone")
+        XCTAssertFalse(pasteboard.types?.contains(AIHandoffService.transientPasteboardType) == true)
     }
 
     private func makeDefaults() throws -> (UserDefaults, String) {

@@ -42,6 +42,7 @@ extension AppleShortcutsTests {
         if [ "$2" = "failure" ]; then echo 'permission denied'; exit 1; fi
         if [ "$3" != "--input-path" ]; then exit 2; fi
         /usr/bin/cmp "$4" "\(directory.appendingPathComponent("expected.txt").path)"
+        printf 'result from shortcut\\n'
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
@@ -52,12 +53,20 @@ extension AppleShortcutsTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let service = AppleShortcutsService(defaults: defaults, executableURL: executable)
         for id in ["input", "failure", "slow"] { service.select(AppleShortcut(id: id, name: id)) }
-        let ran = expectation(description: "Passed UTF8 input")
-        service.run(id: "input", input: input) { error in XCTAssertNil(error); ran.fulfill() }
+        let ran = expectation(description: "Passed UTF8 input and captured output")
+        service.run(id: "input", input: input) { error in
+            XCTAssertNil(error)
+            XCTAssertEqual(service.output, "result from shortcut\n")
+            ran.fulfill()
+        }
         XCTAssertTrue(service.isRunning)
         await fulfillment(of: [ran], timeout: 3)
         let failed = expectation(description: "Execution failure")
-        service.run(id: "failure") { error in XCTAssertTrue(error?.contains("permission denied") == true); failed.fulfill() }
+        service.run(id: "failure") { error in
+            XCTAssertTrue(error?.contains("permission denied") == true)
+            XCTAssertNil(service.output)
+            failed.fulfill()
+        }
         await fulfillment(of: [failed], timeout: 3)
         let cancelled = expectation(description: "Cancellation callback")
         service.run(id: "slow") { error in XCTAssertEqual(error, "Shortcut cancelled."); cancelled.fulfill() }
