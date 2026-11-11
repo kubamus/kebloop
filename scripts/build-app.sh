@@ -69,6 +69,18 @@ if [[ -z "$SIGNING_IDENTITY" ]]; then
   printf 'No Apple Development identity found; using an ad-hoc signature. Accessibility permission may need to be granted again after rebuilding.\n'
 fi
 
+EXTENSION_PATH="$STAGED_APP/Contents/PlugIns/KebloopFinderExtension.appex"
+mkdir -p -- "$EXTENSION_PATH/Contents/MacOS"
+cp -- "$REPO_ROOT/FinderExtension/Info.plist" "$EXTENSION_PATH/Contents/Info.plist"
+xcrun swiftc -O -swift-version 5 -parse-as-library -application-extension \
+  -module-name KebloopFinderExtension -target "$(uname -m)-apple-macosx14.0" \
+  -framework AppKit -framework FinderSync -Xlinker -e -Xlinker _NSExtensionMain \
+  "$REPO_ROOT/Sources/KebloopCore/NewFile.swift" \
+  "$REPO_ROOT/FinderExtension/NewFileMenu.swift" "$REPO_ROOT/FinderExtension/FinderSync.swift" \
+  -o "$EXTENSION_PATH/Contents/MacOS/KebloopFinderExtension"
+codesign --force --sign "$SIGNING_IDENTITY" \
+  --entitlements "$REPO_ROOT/FinderExtension/KebloopFinderExtension.entitlements" "$EXTENSION_PATH"
+/usr/bin/plutil -lint "$EXTENSION_PATH/Contents/Info.plist" >/dev/null
 codesign --force --sign "$SIGNING_IDENTITY" "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 /usr/bin/plutil -lint "$STAGED_APP/Contents/Info.plist" >/dev/null

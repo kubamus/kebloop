@@ -53,6 +53,20 @@ Within clipboard and quicklink search, Escape or the back button returns to root
 
 **Files:** Filename search runs directly from root search, with apps above files and no separate command to open. A 35 ms debounce starts Spotlight searches; cached query snapshots appear immediately while narrowing or revisiting a query, and new results stream during gathering. Hidden paths, app package contents, `~/Library`, and `node_modules` are excluded. Temporary directories, editor backup/swap files, and partial downloads are also excluded. Git repositories are checked against their `.gitignore` rules before either cached or fresh results appear, including nested rules, negations, worktrees, and configured excludes. This uses local `/usr/bin/git` (provided by Xcode or Command Line Tools); tracked files follow Git’s own ignore semantics. Checks run on a worker queue and rule changes apply on the next search. Exact names and prefixes rank before substring matches, with a boost for Documents/Desktop/Downloads/Public. Results depend on Spotlight indexing and macOS access restrictions. This is filename search, not full-content search; the service keeps up to 40 results per query and root search displays up to 12.
 
+## New files in Finder (macOS)
+
+Opening **New File** or its settings while the Finder extension is disabled shows an alert with **Open Extension Settings** and **Not Now**. Kebloop rechecks when you return from System Settings, so enabling the extension clears the warning without repeated prompts.
+
+Search for **New File** to create a file in a chosen folder. Settings → **New File** manages file types, menu labels, default filenames, and starter templates. Text files are enabled initially; Markdown, JSON, shell, environment, YAML, gitignore, HTML, and valid rich-text presets are also included. Add any custom extension, such as `tsx` or `toml`. Drag rows or use the arrows to reorder them. The first enabled type is the toolbar’s first action. All types can be disabled, and right-click actions can be grouped under a **New File** submenu.
+
+Build and install the app with `scripts/install-app.sh`, then launch it once. Enable **Kebloop New File** in **System Settings → General → Login Items & Extensions**. On macOS 27 it may appear under **File Providers**; on earlier versions look under Finder or Added Extensions. Settings → New File also has an **Open Extension Settings** button. In Finder, choose **View → Customize Toolbar…** and add **New File**. Finder right-click menus create files in the targeted folder; the toolbar dropdown lists enabled types and opens customization. macOS may hide third-party context menus in iCloud Drive; use the toolbar there.
+
+Files are created with the configured UTF-8 template and revealed in Finder. Existing items are preserved: `New Text File.txt`, `New Text File 2.txt`, and so on. Leave the default filename blank for `.env` or `.gitignore`; subsequent copies use `.env 2`, etc. Typing `data.json` as the default filename does not double the extension.
+
+New File preferences are global and stored in `~/Library/Application Support/Kebloop/new-file.json`, outside profiles and portable configuration exports. The sandboxed Finder extension reads that file for each menu, so saved changes apply immediately. Like [NewFile](https://github.com/mariusgm/newfile), which inspired this feature, the locally distributed extension uses filesystem sandbox exceptions for user folders, mounted volumes, and temporary folders; macOS privacy permissions still apply.
+
+Searching **settings** or **preferences** (also **ustawienia** or **preferencje**) places the macOS System Settings app above Kebloop’s settings command. Use **kebloop settings** or **open settings** to go directly to Kebloop settings. Hidden apps and disabled app search remain respected.
+
 ## AI handoff
 
 Settings → General → AI provider selects **OpenAI (ChatGPT)**, **Claude**, or **Local (Siri)**. Type a query in root search and press **Tab**, or click the compact Ask button. Your selection persists across restarts.

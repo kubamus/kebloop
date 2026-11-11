@@ -45,6 +45,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let snippets = SnippetStore()
     private let scripts = ScriptCommandStore()
     private let extensions = ExtensionStore()
+    private let newFiles = NewFileStore()
     private var automationWindows: [NSWindow] = []
     private var workflowCleanup: [ObjectIdentifier: () -> Void] = [:]
     private lazy var raycastSDK = RaycastSDKStore()
@@ -244,6 +245,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func handleCommand(_ command: LauncherCommand) {
         switch command {
+        case .newFile:
+            launcher.dismiss(restoreFocus: false)
+            automationWindow(title: command.title, view: NewFileView(store: newFiles, allowsCreation: true).frame(minWidth: 760, minHeight: 580))
         case .calendar:
             automationWindow(title: command.title, view: CalendarMeetingSettingsView(service: calendarMeetings))
         case .joinNextMeeting:
@@ -334,7 +338,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.contentMinSize = NSSize(width: 820, height: 580)
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SettingsView(preferences: preferences, index: index, quicklinks: quicklinks, shortcuts: shortcuts, aliases: aliases, clipboard: clipboard, ai: ai, personalization: personalization, configuration: configuration, commandShortcuts: commandShortcuts, appleShortcuts: appleShortcuts, snippets: snippets, scripts: scripts, extensions: extensions, onReplayOnboarding: { [weak self] in self?.showHelp(onboarding: true) }, onExecute: { [weak self] id in
+            window.contentView = NSHostingView(rootView: SettingsView(preferences: preferences, index: index, quicklinks: quicklinks, shortcuts: shortcuts, aliases: aliases, clipboard: clipboard, ai: ai, personalization: personalization, configuration: configuration, commandShortcuts: commandShortcuts, appleShortcuts: appleShortcuts, snippets: snippets, scripts: scripts, extensions: extensions, newFiles: newFiles, onReplayOnboarding: { [weak self] in self?.showHelp(onboarding: true) }, onExecute: { [weak self] id in
                 self?.settings?.orderOut(nil); self?.launcher.executeCommand(id: id)
             }))
             window.center()
@@ -343,5 +347,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyWindowAppearance()
         NSApp.activate(ignoringOtherApps: true)
         settings?.makeKeyAndOrderFront(nil)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: { $0.scheme == "kebloop" && $0.host == "new-file-settings" }) else { return }
+        showSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .init("KebloopSettingsTab"), object: "newFile")
+        }
     }
 }

@@ -17,6 +17,7 @@ Open apps, find files, run calculations, and reach your clipboard, quicklinks, s
 - App controls, system actions, and window management, depending on your desktop.
 - Inline Local Assistant chat with Apple Foundation Models on macOS 26 with Apple Intelligence, plus prompt handoff to ChatGPT or Claude. Each Tab press starts a fresh conversation; use the Chat History command to browse, continue, or remove saved conversations.
 - macOS window/menu search, meeting commands, selected-text tools, Markdown notes, dictionary, and on-device dictation.
+- macOS Finder New File menus and toolbar button, with custom file types, starter templates, and automatic filename numbering.
 - Raycast JSON export migration, script compatibility, and saved window layouts on macOS.
 
 Core features run locally without a Kebloop account. Local Assistant uses Apple Foundation Models on this Mac; web search and other online tools send requests over the internet. ChatGPT and Claude receive queries when selected.

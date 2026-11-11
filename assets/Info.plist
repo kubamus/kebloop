@@ -13,6 +13,10 @@
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
+<key>CFBundleURLTypes</key><array><dict>
+<key>CFBundleURLName</key><string>com.kebloop.launcher</string>
+<key>CFBundleURLSchemes</key><array><string>kebloop</string></array>
+</dict></array>
 <key>NSAppleEventsUsageDescription</key><string>Kebloop uses macOS automation for shutdown, restart, log out, sleep, mute, and appearance commands.</string>
 <key>NSCalendarsFullAccessUsageDescription</key><string>Kebloop reads calendars you select to show your next meeting and its join link.</string>
 <key>NSCalendarsUsageDescription</key><string>Kebloop reads calendars you select to show your next meeting and its join link.</string>

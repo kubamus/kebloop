@@ -18,6 +18,7 @@ struct SettingsView: View {
     @ObservedObject var snippets: SnippetStore
     @ObservedObject var scripts: ScriptCommandStore
     @ObservedObject var extensions: ExtensionStore
+    @ObservedObject var newFiles: NewFileStore
     var onReplayOnboarding: () -> Void = {}
     var onExecute: (String) -> Void = { _ in }
 
@@ -134,6 +135,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var selectedSettingsPage: some View {
         switch selectedSection {
+        case .newFile: NewFileView(store: newFiles)
         case .scripts: scriptsSettings
         case .extensions: extensionsSettings
         case .snippets: SnippetSettingsView(store: snippets)
@@ -1123,11 +1125,13 @@ struct SettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
+    case newFile
     case scripts, extensions, snippets, general, search, appearance, windowManagement, quicklinks, appShortcuts, commandShortcuts, appleShortcuts, profiles, configuration, aliases, clipboard, help
 
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .newFile: L("New File")
         case .scripts: L("Script Commands")
         case .extensions: L("Extensions")
         case .snippets: L("Snippets")
@@ -1148,6 +1152,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .newFile: "doc.badge.plus"
         case .scripts: "terminal"
         case .extensions: "puzzlepiece.extension"
         case .snippets: "text.quote"
@@ -1169,6 +1174,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
+        case .newFile: L("Create files in Finder and customize file types and templates.")
         case .scripts: L("Manage reviewed local script commands.")
         case .extensions: L("Manage local extensions and their preferences.")
         case .snippets: L("Create reusable text with explicit placeholders.")
@@ -1205,7 +1211,7 @@ private enum SettingsSectionGroup: String, CaseIterable, Identifiable {
         switch self {
         case .preferences: [.general, .search, .appearance, .windowManagement]
         case .shortcuts: [.appShortcuts, .commandShortcuts, .appleShortcuts]
-        case .personalization: [.quicklinks, .snippets, .scripts, .extensions, .aliases, .profiles]
+        case .personalization: [.quicklinks, .snippets, .newFile, .scripts, .extensions, .aliases, .profiles]
         case .data: [.configuration, .clipboard, .help]
         }
     }

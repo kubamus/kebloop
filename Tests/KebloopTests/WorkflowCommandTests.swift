@@ -22,7 +22,7 @@ final class WorkflowCommandTests: XCTestCase {
         let notes = MarkdownNoteStore(directory: notesURL)
         launcher.noteStore = { notes }
         defer { launcher.dismiss(restoreFocus: false); notes.flushAll(); try? FileManager.default.removeItem(at: notesURL) }
-        let commands: [LauncherCommand] = [.windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText,
+        let commands: [LauncherCommand] = [.newFile, .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText,
             .raycastImport, .raycastExtensions, .windowLayouts]
         launcher.show()
         launcher.setQuery("")

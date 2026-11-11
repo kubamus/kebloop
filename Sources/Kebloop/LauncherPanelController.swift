@@ -1013,12 +1013,20 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             default: name = ""
             }
             let appAliases: [String]
-            if case .application(let app) = result, let alias = aliases.alias(for: app) { appAliases = [alias] }
+            if case .application(let app) = result {
+                appAliases = (aliases.alias(for: app).map { [$0] } ?? [])
+                    + (app.bundleIdentifier == "com.apple.systempreferences" ? LauncherSearch.settingsAliases : [])
+            }
             else if case .command(let command) = result { appAliases = command.aliases }
             else { appAliases = [] }
             return AppSearchEntry(id: result.id, name: name, path: "", aliases: appAliases)
         }
-        return search.ranked(query: query, entries: entries, usage: usage).compactMap { byID[$0.id] }
+        let systemSettingsIDs = Set(candidates.compactMap { result -> String? in
+            if case .application(let app) = result, app.bundleIdentifier == "com.apple.systempreferences" { return app.id }
+            return nil
+        })
+        return LauncherSearch.ranked(query: query, entries: entries, usage: usage,
+                                     systemSettingsIDs: systemSettingsIDs).compactMap { byID[$0.id] }
     }
 
     func moveSelection(_ delta: Int) {
@@ -1946,7 +1954,7 @@ final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSWindowDele
             case .chatHistory: showChatHistory()
             case .dictation: enter(.dictation)
             case .newNote: createNote()
-            case .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .raycastImport, .raycastExtensions, .windowLayouts: onCommand?(command)
+            case .newFile, .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .raycastImport, .raycastExtensions, .windowLayouts: onCommand?(command)
             case .scripts, .extensions: onCommand?(command)
             case .clipboard: enter(.clipboard)
             case .quicklinks: enter(.quicklinks)

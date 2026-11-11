@@ -4,6 +4,7 @@ import Combine
 
 // Raw values are persisted identifiers; keep them stable across releases.
 enum LauncherCommand: String, CaseIterable, Identifiable {
+    case newFile
     case newNote, windowSearch, menuSearch, calendar, joinNextMeeting, selectedText, notes, dictionary, dictation, raycastImport, raycastExtensions, windowLayouts
     case lock, sleep, restart, logOut, toggleMute, toggleAppearance, leftHalf, rightHalf, maximizeWindow, centerWindow, restoreWindow, nextDisplay, calculationHistory
     case topHalf, bottomHalf, topLeftQuarter, topRightQuarter, bottomLeftQuarter, bottomRightQuarter, leftThird, centerThird, rightThird, leftTwoThirds, rightTwoThirds, previousDisplay
@@ -11,6 +12,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .newFile: L("New File")
         case .newNote: L("New Note")
         case .windowSearch: L("Search Windows")
         case .menuSearch: L("Search Menu Commands")
@@ -68,6 +70,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .newFile: "doc.badge.plus"
         case .newNote: "square.and.pencil"
         case .windowSearch: "macwindow"
         case .menuSearch: "menubar.rectangle"
@@ -125,6 +128,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
     }
     var aliases: [String] {
         switch self {
+        case .newFile: ["new file", "create file", "newfile", "nowy plik", "utwórz plik"]
         case .newNote: ["new note", "quick note", "nowa notatka"]
         case .windowSearch: ["windows", "window search"]
         case .menuSearch: ["menu search", "menu commands"]
@@ -169,7 +173,7 @@ enum LauncherCommand: String, CaseIterable, Identifiable {
         case .clipboard: ["schowek", "historia", "clipboard", "history", "paste"]
         case .quicklinks: ["linki", "zakładki", "quicklinks", "links", "bookmarks"]
         case .emoji: ["emotikony", "symbole", "emoji", "symbols", "emoji & symbols"]
-        case .settings: ["ustawienia", "preferencje", "settings", "preferences", "open settings"]
+        case .settings: ["ustawienia", "preferencje", "settings", "preferences", "open settings", "kebloop settings", "kebloop preferences", "ustawienia kebloop"]
         case .shutdown: ["wyłącz", "zamknij komputer", "shutdown", "shut down", "power off", "turn off"]
         case .browse: ["polecenia", "przeglądaj", "browse", "commands", "all commands"]
         case .help: ["pomoc", "poradnik", "help", "guide"]

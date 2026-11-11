@@ -161,6 +161,7 @@ struct HelpView: View {
 
     private func description(for command: LauncherCommand) -> String {
         switch command {
+        case .newFile: L("Create a file in a chosen folder, or enable the Finder extension and customize file types and starter templates.")
         case .newNote: L("Create a Markdown note immediately and start editing. The launcher also supports ⌘N.")
         case .windowSearch: L("Search open window titles and bring a document forward. Requires Accessibility permission.")
         case .menuSearch: L("Search the previous application’s menu and execute an enabled command. Requires Accessibility permission.")
@@ -197,7 +198,7 @@ struct HelpView: View {
 
     private func example(for command: LauncherCommand) -> String {
         switch command {
-        case .newNote, .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .notes, .dictionary, .dictation, .raycastImport, .raycastExtensions, .windowLayouts: command.aliases.first ?? command.rawValue
+        case .newFile, .newNote, .windowSearch, .menuSearch, .calendar, .joinNextMeeting, .selectedText, .notes, .dictionary, .dictation, .raycastImport, .raycastExtensions, .windowLayouts: command.aliases.first ?? command.rawValue
 
         case .snippets: L("snippets")
         case .scripts: L("scripts")
@@ -205,7 +206,7 @@ struct HelpView: View {
         case .clipboard: "clipboard"
         case .quicklinks: L("docs or gh kebloop")
         case .emoji: L("emoji smile")
-        case .settings: "settings"
+        case .settings: "kebloop settings"
         case .shutdown: "shutdown"
         case .lock, .sleep, .restart, .logOut, .toggleMute, .toggleAppearance, .leftHalf, .rightHalf, .maximizeWindow, .centerWindow, .restoreWindow, .nextDisplay, .topHalf, .bottomHalf, .topLeftQuarter, .topRightQuarter, .bottomLeftQuarter, .bottomRightQuarter, .leftThird, .centerThird, .rightThird, .leftTwoThirds, .rightTwoThirds, .previousDisplay, .calculationHistory: command.aliases.first ?? command.rawValue
         case .browse: "commands"

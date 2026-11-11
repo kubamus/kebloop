@@ -709,3 +709,32 @@
 "Create a new Markdown note" = "Create a new Markdown note";
 "Show note actions (⌘K)" = "Show note actions (⌘K)";
 "Delete Note   ⌘⌫" = "Delete Note   ⌘⌫";
+
+/* New File */
+"Enable New File in Finder" = "Enable New File in Finder";
+"Not Now" = "Not Now";
+"Add File Type…" = "Add File Type…";
+"Choose a folder for the new file" = "Choose a folder for the new file";
+"Could not save the file type. Check that Kebloop’s settings folder is writable." = "Could not save the file type. Check that Kebloop’s settings folder is writable.";
+"Create File" = "Create File";
+"Create a file in a chosen folder, or enable the Finder extension and customize file types and starter templates." = "Create a file in a chosen folder, or enable the Finder extension and customize file types and starter templates.";
+"Create files in Finder and customize file types and templates." = "Create files in Finder and customize file types and templates.";
+"Create…" = "Create…";
+"Default filename (empty for dotfiles)" = "Default filename (empty for dotfiles)";
+"Delete file type" = "Delete file type";
+"Edit…" = "Edit…";
+"Enable Kebloop New File in System Settings → General → Login Items & Extensions → Finder extensions (File Providers on macOS 27)." = "Enable Kebloop New File in System Settings → General → Login Items & Extensions → Finder extensions (File Providers on macOS 27).";
+"Enable types, edit starter templates, and reorder them. The first enabled type is the toolbar’s default action. Leave the filename empty for dotfiles." = "Enable types, edit starter templates, and reorder them. The first enabled type is the toolbar’s default action. Leave the filename empty for dotfiles.";
+"Extension (e.g. txt or tsx)" = "Extension (e.g. txt or tsx)";
+"File Type" = "File Type";
+"File Types" = "File Types";
+"Finder Integration" = "Finder Integration";
+"Group right-click actions under New File" = "Group right-click actions under New File";
+"In Finder, choose View → Customize Toolbar to add the New File button. The toolbar also works in iCloud Drive, where macOS may hide extension context menus." = "In Finder, choose View → Customize Toolbar to add the New File button. The toolbar also works in iCloud Drive, where macOS may hide extension context menus.";
+"Kebloop New File is enabled in Finder." = "Kebloop New File is enabled in Finder.";
+"Menu label" = "Menu label";
+"Move Down" = "Move Down";
+"Move Up" = "Move Up";
+"New File" = "New File";
+"Open Extension Settings" = "Open Extension Settings";
+"Starter template" = "Starter template";

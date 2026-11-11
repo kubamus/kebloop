@@ -18,6 +18,8 @@ cd kebloop
 
 The installer builds a release bundle, verifies its signature, installs it at `/Applications/Kebloop.app`, and opens the installed copy. Run the same command after pulling updates. Your preferences and clipboard history are stored outside the app bundle.
 
+The bundle includes the separately signed **Kebloop New File** Finder Sync extension. Enable it once in macOS extension settings to add Finder context-menu and toolbar actions; see [New files in Finder](usage.md#new-files-in-finder-macos). A plain `swift build` builds the launcher only; the packaging script compiles and embeds the extension.
+
 If `/Applications` is not writable, install for your user:
 
 ```sh
@@ -46,6 +48,9 @@ Open `Package.swift` in Xcode, or run these commands from the repository root:
 ```sh
 swift build
 swift test -c release
+./scripts/test-finder-settings.sh
 ```
+
+The Finder check runs a signed process with the extension's sandbox entitlements. It verifies that Finder reads the same configuration as the launcher, keeps customization inside the submenu, and creates real files when receiving menu actions with only numeric tags. It reads your saved options without changing them and creates disposable test files in a temporary folder. It uses `KEBLOOP_SIGNING_IDENTITY` when supplied, just like the build script.
 
 See the [usage guide](usage.md) for shortcuts, permissions, and settings.
